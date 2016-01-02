@@ -1,0 +1,17 @@
+@author Edwin Fine <efine@silentcircle.com>
+@copyright 2015 Silent Circle, LLC.
+@version {@version}
+@title Push Notification Service Apple Push Utilities
+@doc
+This application contains Erlang utility modules for the Apple Push Service
+(APS, APNS) support.
+
+=== Document Building ===
+
+This uses `edown' to build markdown documents from `edoc'.  There is some
+special code in `rebar.config.script' to support obtaining the version from the
+`APP_CONFIG' file and making it available to edoc via the `@version' macro.
+
+See `rebar.config.script' for usage and behavior.
+
+@end

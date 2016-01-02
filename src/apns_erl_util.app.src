@@ -1,0 +1,14 @@
+{application, apns_erl_util,
+ [
+  {description, "APNS Erlang Utilities"},
+  {vsn, {cmd, "echo `cat APP_VERSION`"}},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  public_key,
+                  jsx,
+                  sc_util
+                 ]},
+  {env, []}
+ ]}.
