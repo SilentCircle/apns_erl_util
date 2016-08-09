@@ -24,26 +24,55 @@
 -module(apns_json).
 -export([make_notification/1]).
 
+-export_type([json_term/0]).
+
+-type json_term() :: [json_term()]
+                   | [{binary() | atom() | integer(), json_term()}]
+                   | #{} % map of any size, not just the empty map
+                   | 'true'
+                   | 'false'
+                   | 'null'
+                   | integer()
+                   | float()
+                   | binary()
+                   | atom()
+                   | calendar:datetime()
+                   .
+
 %%--------------------------------------------------------------------
 %% @doc Create a notification consisting of a JSON binary suitable for
 %% transmitting to the Apple Push Service.
 %%
-%% Details on the notification proplist's properties follow.
-%%
-%%
-%% === Notification Properties ===
-%%
-%%
+%% == Notification Properties ==
 %% <dl>
-%%   <dt>`alert'</dt>
-%%      <dd>Binary or proplist. If a binary, it will be used
-%%      as the notification text. If a proplist, see below for
-%%      format of the proplist.</dd>
-%%   <dt>`badge'</dt>
-%%      <dd>Badge count (integer)</dd>
-%%   <dt>`sound'</dt>
-%%      <dd>Name of sound file in app bundle to play.</dd>
-%%   <dt>`extra'</dt>
+%%   <dt>``{'alert', binary() | proplist()}''</dt>
+%%      <dd>If a `binary()', it will be used as the notification text. If a
+%%      `proplist()', see {@section Alert Properties} for the format of the
+%%      `proplist()'.</dd>
+%%   <dt>``{'badge', integer()}''</dt>
+%%      <dd>Badge count. Optional: 0 removes badge; absence leaves badge
+%%      unchanged.</dd>
+%%   <dt>``{'sound', binary()}''</dt>
+%%      <dd>The name of a sound file in the app bundle or in the
+%%      `Library/Sounds' folder of the app’s data container. The sound in this
+%%      file is played as an alert. If the sound file doesn’t exist or default
+%%      is specified as the value, the default alert sound is played. The audio
+%%      must be in one of the audio data formats that are compatible with
+%%      system sounds; see
+%%      <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/IPhoneOSClientImp.html#//apple_ref/doc/uid/TP40008194-CH103-SW6">Preparing Custom Alert Sounds</a>
+%%      for details.</dd>
+%%    <dt>``{'content-available', integer()}''</dt>
+%%      <dd>Provide this key with a value of 1 to indicate that new content is
+%%      available. Including this key and value means that when your app is
+%%      launched in the background or resumed,
+%%      `application:didReceiveRemoteNotification:fetchCompletionHandler:' is
+%%      called.</dd>
+%%    <dt>``{'category', binary()}''</dt>
+%%      <dd>Provide this key with a string value that represents the identifier
+%%      property of the `UIMutableUserNotificationCategory' object you created
+%%      to define custom actions. To learn more about using custom actions, see
+%%      <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/IPhoneOSClientImp.html#//apple_ref/doc/uid/TP40008194-CH103-SW26">Registering Your Actionable Notification Types</a>.</dd>
+%%   <dt>``{'extra', proplist()}''</dt>
 %%      <dd>Additional (optional) custom data, which must be an
 %%          object (Erlang proplist) as described in the table below.
 %%
@@ -53,59 +82,90 @@
 %%        </tr>
 %%        <tr>
 %%          <td> <code>number</code> </td>
-%%          <td> <code>integer()</code> and <code>float()</code></td>
+%%          <td> <code>integer() | float()</code></td>
 %%        </tr>
 %%        <tr>
 %%          <td> <code>string</code> </td>
 %%          <td> <code>binary()</code> </td>
 %%        </tr>
 %%        <tr>
-%%          <td> <code>true</code>, <code>false</code> and <code>null</code></td>
-%%          <td> <code>true</code>, <code>false</code> and <code>null</code></td>
+%%          <td> <code>true</code></td>
+%%          <td> <code>'true'</code></td>
+%%        </tr>
+%%        <tr>
+%%          <td> <code>false</code></td>
+%%          <td> <code>'false'</code></td>
+%%        </tr>
+%%        <tr>
+%%          <td> <code>null</code></td>
+%%          <td> <code>'null'</code></td>
 %%        </tr>
 %%        <tr>
 %%          <td> <code>array</code> </td>
-%%          <td> <code>[]</code> and <code>[JSON]</code></td>
+%%          <td> <code>[json()]</code></td>
 %%        </tr>
 %%        <tr>
-%%          <td> <code>object</code> </td>
-%%          <td> <code>[{}]</code> and <code>[{binary() OR atom(), JSON}]</code></td>
+%%          <td> <code>empty object</code> </td>
+%%          <td> <code>[{}]</code></td>
+%%        </tr>
+%%        <tr>
+%%          <td> <code>non-empty object</code> </td>
+%%          <td> <code>[{binary() | atom(), json()}]</code></td>
 %%        </tr>
 %%      </table>
 %%      </dd>
 %% </dl>
 %%
-%%
 %% === Alert Properties ===
 %%
-%%
-%% This describes the proplist that is expected if ``'alert''' is not a
-%% binary string (e.g. `<<"This is a message.">>').
+%% This describes the proplist that is expected if `alert' is not a binary
+%% string (a binary string such as `<<"This is a message.">>'). In the
+%% following description, `binary()' is to be interpreted as a binary string.
 %% <dl>
-%%   <dt>`body'</dt><dd>The alert text to be displayed (binary)</dd>
-%%   <dt>``'action-loc-key'''</dt>
-%%      <dd>
-%%       If a string is specified, displays an alert with two buttons.
-%%       However, iOS uses the string as a key to get a localized string in the
-%%       current localization to use for the right button's title instead of
-%%       "View". If the value is `null', the system displays an alert with a
-%%       single OK button that simply dismisses the alert when tapped. See
-%%       <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/ApplePushService/ApplePushService.html#//apple_ref/doc/uid/TP40008194-CH100-SW21">Localized Formatted Strings</a>
-%%       for more information.
-%%      </dd>
-%%   <dt>``'loc-key'''</dt>
+%%   <dt>``{'title', binary()}''</dt>
+%%      <dd>A short string describing the purpose of the notification. Apple
+%%      Watch displays this string as part of the notification interface. This
+%%      string is displayed only briefly and should be crafted so that it can
+%%      be understood quickly. This key was added in iOS 8.2.</dd>
+%%   <dt>``{'body', binary()}''</dt>
+%%      <dd>The text of the alert message.</dd>
+%%   <dt>``{'title-loc-key', binary() | 'null'}''</dt>
+%%      <dd>The key to a title string in the `Localizable.strings' file for the
+%%      current localization. The key string can be formatted with `%@' and
+%%      `%n$@' specifiers to take the variables specified in the ``
+%%      'title-loc-args' '' array.
+%%      See <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/TheNotificationPayload.html#//apple_ref/doc/uid/TP40008194-CH107-SW7">Localized Formatted Strings</a>
+%%      for more information. This key was added in iOS 8.2.</dd>
+%%   <dt>``{'title-loc-args', [binary()] | 'null'}''</dt>
+%%      <dd>Variable string values to appear in place of the format specifiers
+%%      in `` 'title-loc-key' ''.
+%%      See <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/TheNotificationPayload.html#//apple_ref/doc/uid/TP40008194-CH107-SW7">Localized Formatted Strings</a> for more information.
+%%      This key was added in iOS 8.2.</dd>
+%%   <dt>``{'action-loc-key', binary() | 'null'}''</dt>
+%%      <dd>If a string is specified, displays an alert with two buttons.
+%%      However, iOS uses the string as a key to get a localized string in the
+%%      current localization to use for the right button's title instead of
+%%      "View". If the value is `null', the system displays an alert with a
+%%      single OK button that simply dismisses the alert when tapped.
+%%      See
+%%      <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/TheNotificationPayload.html#//apple_ref/doc/uid/TP40008194-CH107-SW7">Localized Formatted Strings</a>
+%%      for more information.</dd>
+%%   <dt>``{'loc-key', binary()}''</dt>
 %%     <dd>
-%%      A key to an alert-message string in a Localizable.strings file for
+%%      A key to an alert-message string in a `Localizable.strings' file for
 %%      the current localization (which is set by the user's language
 %%      preference). The key string can be formatted with `%@' and `%n$@'
-%%      specifiers to take the variables specified in ``'loc-args'''.
+%%      specifiers to take the variables specified in `` 'loc-args' ''.
+%%      See
+%%      <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/TheNotificationPayload.html#//apple_ref/doc/uid/TP40008194-CH107-SW7">Localized Formatted Strings</a>
+%%      for more information.
 %%     </dd>
-%%   <dt>``'loc-args'''</dt>
+%%   <dt>``{'loc-args', [binary()]}''</dt>
 %%     <dd>
-%%      This array of binaries contains variable values to be substituted into
-%%      the format string defined in ``'loc-key'''.
+%%      This array of binary strings contains variable values to be substituted
+%%      into the format string defined in `` 'loc-key' ''.
 %%     </dd>
-%%   <dt>``'launch-image'''</dt>
+%%   <dt>``{'launch-image', binary()}''</dt>
 %%     <dd>
 %%      The filename of an image file in the application bundle; it may include
 %%      the extension or omit it. The image is used as the launch image when
@@ -147,14 +207,18 @@
 %%
 %% === Localized alert using 'loc-key' and 'loc-args' ===
 %%
+%% This assumes that the `Localizable.strings' file in the `.lproj' directory
+%% contains
+%%
+%% ```
+%% "GAME_PLAY_REQUEST_FORMAT" = "%@ and %@ have invited you to play Monopoly";
+%% '''
+%%
 %% ```
 %% Notification = [
-%%     {'alert',
-%%         [
-%%             {'loc-key', <<"GAME_PLAY_REQUEST_FORMAT">>},
-%%             {'loc-args', [<<"Jenna">>, <<"Frank">>]}
-%%         ]
-%%     },
+%%     {'alert', [{'title', <<"Game invite">>},
+%%                {'loc-key', <<"GAME_PLAY_REQUEST_FORMAT">>},
+%%                {'loc-args', [<<"Jenna">>, <<"Frank">>]}]},
 %%     {'sound', <<"chime">>}
 %% ].
 %% '''
@@ -162,9 +226,7 @@
 %% == More Information ==
 %%
 %% For information on the keys in the proplist, see
-%% <a href="https://developer.apple.com/library/ios/#documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/">
-%% Local and Push Notification Programming Guide
-%% </a> (requires Apple Developer login).
+%% <a href="https://developer.apple.com/library/ios/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/Chapters/TheNotificationPayload.html#//apple_ref/doc/uid/TP40008194-CH107-SW1">Local and Push Notification Programming Guide</a>.
 %%
 %% @end
 %%--------------------------------------------------------------------

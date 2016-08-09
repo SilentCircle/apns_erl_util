@@ -23,11 +23,131 @@ This supports the simple (0), enhanced (1), and "v2" (2) formats.
 
 
 
+### <a name="type-apns_error">apns_error()</a> ###
+
+
+<pre><code>
+apns_error() = term()
+</code></pre>
+
+
+
+
+### <a name="type-apns_notification">apns_notification()</a> ###
+
+
+<pre><code>
+apns_notification() = term()
+</code></pre>
+
+
+
+
+### <a name="type-apns_packet">apns_packet()</a> ###
+
+
+<pre><code>
+apns_packet() = binary()
+</code></pre>
+
+
+
+
+### <a name="type-bytes">bytes()</a> ###
+
+
+<pre><code>
+bytes() = [byte()]
+</code></pre>
+
+
+
+
+### <a name="type-decode_err_pkt_error">decode_err_pkt_error()</a> ###
+
+
+<pre><code>
+decode_err_pkt_error() = {error, <a href="#type-decode_err_pkt_reason">decode_err_pkt_reason()</a>}
+</code></pre>
+
+
+
+
+### <a name="type-decode_err_pkt_reason">decode_err_pkt_reason()</a> ###
+
+
+<pre><code>
+decode_err_pkt_reason() = bad_packet
+</code></pre>
+
+
+
+
+### <a name="type-decode_error">decode_error()</a> ###
+
+
+<pre><code>
+decode_error() = {error, <a href="#type-decode_reason">decode_reason()</a>}
+</code></pre>
+
+
+
+
+### <a name="type-decode_reason">decode_reason()</a> ###
+
+
+<pre><code>
+decode_reason() = bad_packet | buffer_too_short | bad_json
+</code></pre>
+
+
+
+
 ### <a name="type-decoded_packet">decoded_packet()</a> ###
 
 
 <pre><code>
-decoded_packet() = {Timestamp::non_neg_integer(), Token::binary()}
+decoded_packet() = {Timestamp::integer(), Token::binary()}
+</code></pre>
+
+
+
+
+### <a name="type-encode_error">encode_error()</a> ###
+
+
+<pre><code>
+encode_error() = {error, <a href="#type-encode_reason">encode_reason()</a>}
+</code></pre>
+
+
+
+
+### <a name="type-encode_reason">encode_reason()</a> ###
+
+
+<pre><code>
+encode_reason() = bad_token | bad_json | payload_too_long
+</code></pre>
+
+
+
+
+### <a name="type-json">json()</a> ###
+
+
+<pre><code>
+json() = string() | binary()
+</code></pre>
+
+
+
+
+### <a name="type-token">token()</a> ###
+
+
+<pre><code>
+token() = string() | <a href="#type-bytes">bytes()</a> | binary()
 </code></pre>
 
 <a name="index"></a>
@@ -53,7 +173,7 @@ string).</td></tr><tr><td valign="top"><a href="#error_to_atom-1">error_to_atom/
 decode(Packet) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>Packet = binary()</code></li><li><code>Result = #apns_notification{} | <a href="#type-decode_error">decode_error()</a></code></li></ul>
+<ul class="definitions"><li><code>Packet = binary()</code></li><li><code>Result = <a href="#type-apns_notification">apns_notification()</a> | <a href="#type-decode_error">decode_error()</a></code></li></ul>
 
 Decode an encoded APNS packet.
 
@@ -65,7 +185,7 @@ Decode an encoded APNS packet.
 decode_error_packet(ErrPkt) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>ErrPkt = iolist() | binary()</code></li><li><code>Result = #apns_error{} | <a href="#type-decode_err_pkt_error">decode_err_pkt_error()</a></code></li></ul>
+<ul class="definitions"><li><code>ErrPkt = iolist() | binary()</code></li><li><code>Result = <a href="#type-apns_error">apns_error()</a> | <a href="#type-decode_err_pkt_error">decode_err_pkt_error()</a></code></li></ul>
 
 Decode an error received from APNS.
 

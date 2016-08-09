@@ -48,9 +48,6 @@
 -define(APNS_CMD_V2, 2).
 -define(ERROR_PACKET_ID, 8).
 
--define(MAX_PAYLOAD_LEN, 256).
--define(MAX_PAYLOAD_LEN_V2, 2048).
--define(MAX_PAYLOAD_LEN_VOIP, 4096). %% Unconfirmed
 -define(APNS_TOKEN_SIZE, 32). % This may change in future.
 
 %% Command V2 item identities
@@ -67,11 +64,18 @@
 -define(BYTE_1, 1).
 -define(BYTE_4, 4).
 
-%%--------------------------------------------------------------------
-%% Includes
-%%--------------------------------------------------------------------
--include("apns_types.hrl").
--include("apns_recs.hrl").
+-type apns_notification()     :: term().
+-type apns_error()            :: term().
+-type bytes()                 :: [byte()].
+-type token()                 :: string() | bytes() | binary().
+-type json()                  :: string() | binary().
+-type apns_packet()           :: binary().
+-type encode_error()          :: {error, encode_reason()}.
+-type encode_reason()         :: bad_token | bad_json | payload_too_long.
+-type decode_error()          :: {error, decode_reason()}.
+-type decode_reason()         :: bad_packet | buffer_too_short | bad_json.
+-type decode_err_pkt_error()  :: {error, decode_err_pkt_reason()}.
+-type decode_err_pkt_reason() :: bad_packet.
 
 %%====================================================================
 %% API
@@ -99,12 +103,13 @@ encode_simple(Token, Payload) ->
 %% "enhanced" (command 1) APNS packet.
 %% @end
 %%--------------------------------------------------------------------
--spec encode_enhanced(Id, Expiry, Token, Payload) -> Result when
-      Id :: integer(), Expiry :: integer(), Token :: token(),
-      Payload :: json(),
-      Result :: apns_packet() | encode_error().
-encode_enhanced(Id, Expiry, <<Token/binary>>, <<Payload/binary>>)
-  when is_integer(Id), is_integer(Expiry) ->
+-spec encode_enhanced(Id, Expiry, Token, Payload) -> Result
+    when Id :: integer(), Expiry :: integer(), Token :: token(),
+         Payload :: json(), Result :: apns_packet() | encode_error().
+
+encode_enhanced(Id, Expiry, <<Token/binary>>,
+                <<Payload/binary>>) when is_integer(Id),
+                                         is_integer(Expiry) ->
     case encode_body(maybe_encode_token(Token), Payload) of
         <<Body/binary>> ->
             <<?ENHANCED_CMD, Id:32, Expiry:32/big, Body/binary>>;
@@ -122,24 +127,20 @@ encode_enhanced(Id, Expiry, Token, Payload) ->
       Id :: integer(), Expiry :: integer(), Token :: token(),
       Payload :: json(), Prio :: integer(),
       Result :: apns_packet() | encode_error().
-encode_v2(Id, Expiry, <<Token/binary>>, <<Payload/binary>>, Prio)
-        when is_integer(Id),
-             is_integer(Expiry),
-             is_integer(Prio), Prio >= 0, Prio =< 255 ->
-    case {maybe_encode_token(Token), validate_json(Payload)} of
-        {<<BTok/binary>>, <<Json/binary>>} ->
-            make_v2_frame(
-                [
-                    {?ID_NFN_ID,   Id},
-                    {?ID_EXP_DATE, Expiry},
-                    {?ID_TOKEN,    BTok},
-                    {?ID_PAYLOAD,  Json},
-                    {?ID_PRIORITY, Prio}
-                ]
-            );
-        {_, bad_json} ->
-            {error, bad_json}
-    end;
+encode_v2(Id, Expiry, <<Token/binary>>, <<Payload/binary>>,
+          Prio) when is_integer(Id) andalso
+                     is_integer(Expiry) andalso
+                     is_integer(Prio) andalso
+                     0 =< Prio andalso Prio =< 255 ->
+    make_v2_frame(
+      [
+       {?ID_NFN_ID,   Id},
+       {?ID_EXP_DATE, Expiry},
+       {?ID_TOKEN,    maybe_encode_token(Token)},
+       {?ID_PAYLOAD,  Payload},
+       {?ID_PRIORITY, Prio}
+      ]
+     );
 encode_v2(Id, Expiry, Token, Payload, Prio) ->
     encode_v2(Id, Expiry, sc_util:to_bin(Token),
               sc_util:to_bin(Payload), Prio).
@@ -150,28 +151,33 @@ encode_v2(Id, Expiry, Token, Payload, Prio) ->
 %%--------------------------------------------------------------------
 -spec decode(Packet) -> Result when
       Packet :: binary(),
-      Result :: #apns_notification{} | decode_error().
+      Result :: apns_notification() | decode_error().
 decode(<<?APNS_CMD_V2, Len:32, Body/binary>>) ->
     <<Items:Len/binary, Rest/binary>> = Body,
     case decode_v2_items(Items) of
-        #apns_notification{} = R ->
-            R#apns_notification{rest = Rest};
-        Error ->
-            Error
+        {error, _} = Error ->
+            Error;
+        R ->
+            true = apns_recs:'#is_record-'(apns_notification, R),
+            apns_recs:'#set-apns_notification'([{rest, Rest}], R)
     end;
 decode(<<?ENHANCED_CMD, Id:32, Expire:32/big, Body/binary>>) ->
     case decode_body(Body) of
-        #apns_notification{} = R ->
-            R#apns_notification{cmd = enhanced, id = Id, expire = Expire};
-        Error ->
-            Error
+        {error, _} = Error ->
+            Error;
+        R ->
+            true = apns_recs:'#is_record-'(apns_notification, R),
+            apns_recs:'#set-apns_notification'([{cmd, enhanced},
+                                                {id, Id},
+                                                {expire, Expire}], R)
     end;
 decode(<<?SIMPLE_CMD, Body/binary>> = _Packet) ->
     case decode_body(Body) of
-        #apns_notification{} = R ->
-            R;
-        Error ->
-            Error
+        {error, _} = Error ->
+            Error;
+        R ->
+            true = apns_recs:'#is_record-'(apns_notification, R),
+            R
     end;
 decode(<<_Other/binary>>) ->
     {error, bad_packet}.
@@ -182,7 +188,7 @@ decode(<<_Other/binary>>) ->
 %%--------------------------------------------------------------------
 -spec decode_error_packet(ErrPkt) -> Result when
       ErrPkt :: iolist() | binary(),
-      Result :: #apns_error{} | decode_err_pkt_error().
+      Result :: apns_error() | decode_err_pkt_error().
 decode_error_packet(ErrPkt) when is_list(ErrPkt); is_binary(ErrPkt) ->
     decode_error_packet_bin(sc_util:to_bin(ErrPkt)).
 
@@ -190,7 +196,7 @@ decode_error_packet(ErrPkt) when is_list(ErrPkt); is_binary(ErrPkt) ->
 %% @doc Decode a feedback packet received from APNS feedback service.
 %% @end
 %%--------------------------------------------------------------------
--type decoded_packet() :: {Timestamp :: non_neg_integer(),
+-type decoded_packet() :: {Timestamp :: integer(),
                            Token :: binary()}.
 -spec decode_feedback_packet(Packet) -> Result when
       Packet :: list() | binary(), Result :: [decoded_packet()].
@@ -271,25 +277,23 @@ error_to_atom(N) when is_integer(N) ->
     list_to_atom("error_" ++ integer_to_list(N)).
 
 %%--------------------------------------------------------------------
+%% @doc Convert APNSv2 field ID to `apns_notification' record field name
+%% or false if ID is unknown.
+%% @end
+%%--------------------------------------------------------------------
+id_to_atom(?ID_TOKEN)    -> token;
+id_to_atom(?ID_PAYLOAD)  -> payload;
+id_to_atom(?ID_NFN_ID)   -> id;
+id_to_atom(?ID_EXP_DATE) -> expire;
+id_to_atom(?ID_PRIORITY) -> priority;
+id_to_atom(_Unknown    ) -> undefined.
+
+%%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
-encode_body(<<Token/binary>>, <<Payload/binary>>) ->
-    case validate_json(Payload) of
-        <<Json/binary>> ->
-            encode_valid_body(Token, Json);
-        bad_json ->
-            {error, bad_json}
-    end.
-
-encode_valid_body(<<Token/binary>>, <<Json/binary>>) ->
-    JsonLen = byte_size(Json),
-    case JsonLen =< ?MAX_PAYLOAD_LEN of
-        true ->
-            TokLen = byte_size(Token),
-            <<TokLen:16/big, Token/binary, JsonLen:16/big, Json/binary>>;
-        false ->
-            {error, payload_too_long}
-    end.
+encode_body(<<Token/binary>>, <<Json/binary>>) ->
+    <<(byte_size(Token)):16/big, Token/binary,
+      (byte_size(Json)):16/big, Json/binary>>.
 
 decode_body(<<TokLen:16/big, Rest/binary>>) ->
     case Rest of
@@ -328,13 +332,10 @@ decode_v2_items(<<_/binary>>, _Acc) ->
     {error, buffer_too_short}.
 
 apns_notification_v2(L) ->
-    lists:foldl(fun({?ID_TOKEN,    V}, R) -> R#apns_notification{token = V};
-                   ({?ID_PAYLOAD,  V}, R) -> R#apns_notification{payload = V};
-                   ({?ID_NFN_ID,   V}, R) -> R#apns_notification{id = V};
-                   ({?ID_EXP_DATE, V}, R) -> R#apns_notification{expire = V};
-                   ({?ID_PRIORITY, V}, R) -> R#apns_notification{priority = V};
-                   ({_UnknownId,  _V}, R) -> R
-                end, #apns_notification{cmd = v2}, L).
+    Props = [{Attr, V} || {Id, V} <- L, begin Attr = id_to_atom(Id),
+                                              Attr /= undefined
+                                        end],
+    apns_recs:'#new-apns_notification'([{cmd, v2} | Props]).
 
 decode_item(Id, Len, <<Item/binary>>) ->
     (item_decoder(Id))(Id, Len, Item).
@@ -353,43 +354,25 @@ decode_item_binary(Id, Len, <<B/binary>>) ->
     {Id, Item}.
 
 create_notification(Token, Payload, Rest) ->
-    case validate_json(Payload) of
-        Payload -> % Note pattern match
-            #apns_notification{
-                token = Token,
-                payload = Payload,
-                rest = Rest
-            };
-        bad_json ->
-            {error, bad_json}
-    end.
+    apns_recs:'#new-apns_notification'([{token, Token},
+                                        {payload, Payload},
+                                        {rest, Rest}]).
 
 -spec decode_error_packet_bin(ErrPkt) -> Result when
       ErrPkt :: binary(),
-      Result :: #apns_error{} | decode_err_pkt_error().
+      Result :: apns_error() | decode_err_pkt_error().
 decode_error_packet_bin(<<?ERROR_PACKET_ID, Status, Id:32>>) ->
     make_apns_error(Id, Status);
 decode_error_packet_bin(<<_/binary>>) ->
     {error, bad_packet}.
 
-validate_json(Json) ->
-    BJson = sc_util:to_bin(Json),
-    case jsx:is_json(BJson) of
-        true ->
-            BJson;
-        false ->
-            bad_json
-    end.
-
--spec make_apns_error(Id, Status) -> #apns_error{} when
-      Id :: integer(), Status :: integer().
+-spec make_apns_error(Id, Status) -> ApnsError
+    when Id :: integer(), Status :: integer(), ApnsError:: apns_error().
 make_apns_error(Id, Status) ->
-    #apns_error{
-        id = Id,
-        status = error_to_atom(Status),
-        status_code = Status,
-        status_desc = error_description(Status)
-    }.
+    apns_recs:'#new-apns_error'([{id, Id},
+                                 {status, error_to_atom(Status)},
+                                 {status_code, Status},
+                                 {status_desc, error_description(Status)}]).
 
 %% The token may have been passed in unconverted hex string format,
 %% while APNS expects it to be in binary. If it's an Erlang binary,

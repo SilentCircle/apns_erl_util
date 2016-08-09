@@ -1,12 +1,3 @@
-ebin/
-deps/
-.test
 .*.sw?
-test/*.beam
-doc/*.html
-doc/edoc-info
-doc/erlang.png
-doc/stylesheet.css
-logs/
-.deps_plt
-.rebar/
+rebar3
+_build

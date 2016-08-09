@@ -5,7 +5,6 @@
 -module(apns_lib_SUITE).
 
 -include_lib("common_test/include/ct.hrl").
--include("apns_recs.hrl").
 
 -compile(export_all).
 
@@ -154,7 +153,7 @@ end_per_testcase(_Case, _Config) ->
 %%
 %% Description: Returns a list of test case group definitions.
 %%--------------------------------------------------------------------
-groups() -> 
+groups() ->
     [
         {
             encode,
@@ -184,7 +183,7 @@ groups() ->
 %% Description: Returns the list of groups and test cases that
 %%              are to be executed.
 %%--------------------------------------------------------------------
-all() -> 
+all() ->
     [
         {group, encode}
     ].
@@ -232,7 +231,8 @@ roundtrip_simple_test(_Config) ->
     Token = token_data(),
     JSON = alert_json("Test"),
     Packet = apns_lib:encode_simple(Token, JSON),
-    Actual = #apns_notification{} = apns_lib:decode(Packet),
+    Actual = apns_lib:decode(Packet),
+    true = apns_recs:'#is_record-'(apns_notification, Actual),
     Expected = shortest_simple_apns_rec(),
     Expected = Actual,
     ok.
@@ -252,12 +252,7 @@ decode_error_packet_test(_Config) ->
     Status = 0,
     Id = 12345,
     Packet = make_error_packet(Status, Id),
-    Expected = #apns_error{
-        id          = Id,
-        status      = apns_lib:error_to_atom(Status),
-        status_code = Status,
-        status_desc = apns_lib:error_description(Status)
-    },
+    Expected = make_apns_error(Status, Id),
     Actual = apns_lib:decode_error_packet(Packet),
     Expected = Actual,
     ok.
@@ -270,12 +265,7 @@ decode_bad_error_packet_test(_Config) ->
     Status = 250, % Unhandled error code
     Id = 0,
     Packet = make_error_packet(Status, Id),
-    Expected = #apns_error{
-        id          = Id,
-        status      = apns_lib:error_to_atom(Status),
-        status_code = Status,
-        status_desc = apns_lib:error_description(Status)
-    },
+    Expected = make_apns_error(Status, Id),
     Actual = apns_lib:decode_error_packet(Packet),
     Expected = Actual,
     ok.
@@ -295,10 +285,8 @@ alert_json(Msg) ->
                  {<<"content-available">>, 1}]}]).
 
 shortest_simple_apns_rec() ->
-    #apns_notification{
-        token = token_data(),
-        payload = alert_json("Test")
-    }.
+    apns_recs:'#new-apns_notification'([{token, token_data()},
+                                        {payload, alert_json("Test")}]).
 
 shortest_simple_apns_packet() ->
     Token = token_data(),
@@ -311,3 +299,10 @@ make_error_packet(Status, Id) when is_integer(Status),
                                    Id >= -2147483647, Id =< 2147483647 ->
     <<8, Status, Id:32/integer>>.
 
+make_apns_error(Status, Id) ->
+    apns_recs:'#new-apns_error'(
+                [{id, Id},
+                 {status, apns_lib:error_to_atom(Status)},
+                 {status_code, Status},
+                 {status_desc, apns_lib:error_description(Status)}
+                ]).
