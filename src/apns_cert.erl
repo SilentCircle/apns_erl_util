@@ -34,10 +34,6 @@
         , get_cert_info/1
         , get_cert_info_map/1
         , asn1_decode/1
-        , asn1_decode_tag/2
-        , asn1_decode_sequence/2
-        , asn1_tag_octets/1
-        , asn1_tag_number/2
         ]).
 
 -include_lib("public_key/include/public_key.hrl").
@@ -57,41 +53,25 @@
 
 -define(ASN1_NULL_BIN, <<5, 0>>).
 
-%% Last submatch must be either BundleSeedID:BundleID or just BundleID
--define(APP_ID_RE,
-        "^Apple(?:\\s+Production|Development)?(?:\\s+IOS)?\\s+Push\\s+Services:\\s+(.*)$").
-
--define(APP_ID_RE_VOIP, "^VoIP\\s+Services:\\s+(.*)").
+-define(APP_ID_RE, "^("
+                   "Apple\\s+Push\\s+Services|"
+                   "Apple\\s+Production(\\s+IOS)?\\s+Push\\s+Services|"
+                   "Apple\\s+Development(\\s+IOS)?\\s+Push\\s+Services|"
+                   "VoIP\\s+Services|"
+                   "Website\\s+Push\\s+ID|"
+                   "Pass\\s+Type\\s+ID|"
+                   "WatchKit\s+Services"
+                   ")" % This group is not captured because all_names is used
+                   ":\\s+(?<app_id>.*)$"
+       ).
 
 -define(WWDR_NAME,
     <<"Apple Worldwide Developer Relations Certification Authority">>).
 
 -define(is_digit(X), ($0 =< X andalso X =< $9)).
 
-%%--------------------------------------------------------------------
-%% ASN.1 record defs
-%%--------------------------------------------------------------------
--type asn1_class()    :: universal | application | context | private.
--type asn1_encoding() :: primitive | constructed.
--type asn1_tag_num() :: non_neg_integer().
--type asn1_tag_id() :: atom().
-
--record(asn1_tag, {
-          class = universal :: asn1_class(),
-          encoding = primitive :: asn1_encoding(),
-          tag_num = 0 :: asn1_tag_num(),
-          id = undefined :: asn1_tag_id()
-         }).
-
--type asn1_tag() :: #asn1_tag{}.
--type asn1_len() :: non_neg_integer().
--type asn1_val() :: binary().
-
--record(asn1_tlv, {tag = #asn1_tag{} :: asn1_tag(),
-                   len = 0 :: asn1_len(),
-                   val = <<>> :: asn1_val()}).
-
--type asn1_tlv_rec() :: #asn1_tlv{}.
+-define(bit7_clear(N), (N band 16#80 =:= 0)).
+-define(bit7_set(N), (not ?bit7_clear(N))).
 
 %%-------------------------------------------------------------------
 %% Types
@@ -102,6 +82,34 @@
     {universalString, bin_or_string()} | {utf8String, bin_or_string()} |
     {bmpString, bin_or_string()}.
 -type cert_info() :: term().
+
+-type asn1_tag() :: asn1_boolean()
+                  | asn1_integer()
+                  | asn1_bit_string()
+                  | asn1_octet_string()
+                  | asn1_null()
+                  | asn1_object_identifier()
+                  | asn1_utf8_string()
+                  | asn1_printable_string()
+                  | asn1_teletex_string()
+                  | asn1_ia5_string()
+                  | asn1_bmp_string().
+
+-type asn1_tag_val() :: {asn1_tag(), binary()}
+                      | {asn1_sequence(), [asn1_tag_val()]}.
+
+-type asn1_boolean()           :: 16#01.
+-type asn1_integer()           :: 16#02.
+-type asn1_bit_string()        :: 16#03.
+-type asn1_octet_string()      :: 16#04.
+-type asn1_null()              :: 16#05.
+-type asn1_object_identifier() :: 16#06.
+-type asn1_sequence()          :: 16#10.
+-type asn1_utf8_string()       :: 16#0C.
+-type asn1_printable_string()  :: 16#13.
+-type asn1_teletex_string()    :: 16#14.
+-type asn1_ia5_string()        :: 16#16.
+-type asn1_bmp_string()        :: 16#1E.
 
 %%--------------------------------------------------------------------
 %% @doc Validate that the `BundleSeedID' and `BundleID' correspond to the
@@ -295,18 +303,15 @@ get_cert_info_map(#'OTPCertificate'{tbsCertificate = R}) ->
       BundleInfo :: binary(), Reason :: term().
 extract_bundle_info(CN) ->
     {ok, Str} = unicode_to_list(CN),
-    case re:run(Str, ?APP_ID_RE, [{capture, all_but_first, binary}]) of
-        {match, [BundleInfo]} ->
+    {ok, RE} = re:compile(?APP_ID_RE),
+    {namelist, [_|_] = NL} = re:inspect(RE, namelist),
+    case re:run(Str, RE, [{capture, all_names, binary}]) of
+        {match, Matches} ->
+            MatchProps = lists:zip(NL, Matches),
+            BundleInfo = proplists:get_value(<<"app_id">>, MatchProps),
             {ok, BundleInfo};
         nomatch ->
-            case re:run(Str, ?APP_ID_RE_VOIP, [{capture,
-                                                all_but_first,
-                                                binary}]) of
-                {match, [BundleInfo]} ->
-                    {ok, BundleInfo}; % Assume prod for now
-                nomatch ->
-                    {error, {not_an_apns_cert, Str}}
-            end
+            {error, {not_an_apns_cert, Str}}
     end.
 
 %%--------------------------------------------------------------------
@@ -402,18 +407,18 @@ select_attr(AttrType, AttrVals) ->
 select_ext(_ExtID, asn1_NOVALUE) ->
     undefined;
 select_ext(?'id-apns-topics', ExtVals) ->
-    maybe_extract_topics(?'id-apns-topics', ExtVals);
+    maybe_extract_topics(ExtVals);
 select_ext(ExtID, ExtVals) ->
     decode_ext(extract_ext(ExtID, ExtVals)).
 
 %%--------------------------------------------------------------------
-maybe_extract_topics(ExtID, ExtVals) ->
-    case extract_ext(ExtID, ExtVals) of
+maybe_extract_topics(ExtVals) ->
+    case extract_ext(?'id-apns-topics', ExtVals) of
         undefined ->
             undefined;
         EncodedTopics ->
             {Topics, _} = asn1_decode(EncodedTopics),
-            Topics
+            rearrange_topics(Topics)
     end.
 
 %%--------------------------------------------------------------------
@@ -539,50 +544,175 @@ d_to_int(A) when ?is_digit(A) ->
 
 %%% For more info, see https://www.itu.int/ITU-T/studygroups/com17/languages/X.690-0207.pdf
 %%--------------------------------------------------------------------
+%% Sample return from asn1tr_nif:decode_ber_tlv/1:
+%%
+%% ExtnValue = <<48,112,12,19,99,111,109,46,101,120,97,109,112,108,101,
+%%               46,70,97,107,101,65,112,112,48,5,12,3,97,112,112,12,24,
+%%               99,111,109,46,101,120,97,109,112,108,101,46,70,97,107,
+%%               101,65,112,112,46,118,111,105,112,48,6,12,4,118,111,105,
+%%               112,12,32,99,111,109,46,101,120,97,109,112,108,101,46,
+%%               70,97,107,101,65,112,112,46,99,111,109,112,108,105,99,
+%%               97,116,105,111,110,48,14,12,12,99,111,109,112,108,105,
+%%               99,97,116,105,111,110>>
+%%
+%% asn1rt_nif:decode_ber_tlv(ExtnValue) ->
+%%  {{16,
+%%    [{12,<<"com.example.FakeApp">>},
+%%     {16,[{12,<<"app">>}]},
+%%     {12,<<"com.example.FakeApp.voip">>},
+%%     {16,[{12,<<"voip">>}]},
+%%     {12,<<"com.example.FakeApp.complication">>},
+%%     {16,[{12,<<"complication">>}]}]},
+%%   <<>>}.
+%%
+-spec asn1_decode(Tlv) -> Result when
+      Tlv :: undefined | binary(), Result :: {Decoded, Rest},
+      Decoded :: term(), Rest :: binary().
+
 asn1_decode(undefined) ->
     undefined;
 asn1_decode(<<>>) ->
     throw({der_error, zero_data_length});
-asn1_decode(<<T, Rest0/binary>>) ->
-    {Res, Left} = case asn1_decode_tag(T, Rest0) of
-                      {#asn1_tlv{tag=#asn1_tag{id='SEQUENCE'}}=Tlv, Rest} ->
-                          Bytes = Tlv#asn1_tlv.val,
-                          SeqLen = Tlv#asn1_tlv.len,
-                          {asn1_decode_sequence(Bytes, SeqLen), Rest};
-                      {#asn1_tlv{} = Tlv, Rest} ->
-                          {asn1_decode_tlv(Tlv), Rest}
-                  end,
-    {canonicalize(Res), Left}.
+asn1_decode(<<Tlv/binary>>) ->
+    %% Using undocumented (?) asn1rt_nif/1.
+    {{Tag, Val}, Rest} = asn1rt_nif:decode_ber_tlv(Tlv),
+    {unpack_tag_val(asn1_tag(Tag), Val), Rest}.
+
+unpack_sequence([_|_] = Seq) ->
+    unpack_sequence(Seq, []).
+
+unpack_sequence([{Tag, Val}|T], Acc) ->
+    UnpVal = unpack_tag_val(asn1_tag(Tag), Val),
+    unpack_sequence(T, [UnpVal | Acc]);
+unpack_sequence([], Acc) ->
+    lists:reverse(Acc).
+
+unpack_tag_val('BOOLEAN', Val)           -> unpack_boolean(Val);
+unpack_tag_val('INTEGER', Val)           -> unpack_integer(Val);
+unpack_tag_val('BIT STRING', Val)        -> unpack_bit_string(Val);
+unpack_tag_val('OCTET STRING', Val)      -> unpack_octet_string(Val);
+unpack_tag_val('NULL', Val)              -> unpack_null(Val);
+unpack_tag_val('OBJECT IDENTIFIER', Val) -> unpack_object_identifier(Val);
+unpack_tag_val('UTF8String', Val)        -> unpack_utf8_string(Val);
+unpack_tag_val('SEQUENCE', Val)          -> unpack_sequence(Val);
+unpack_tag_val('PrintableString', Val)   -> unpack_printable_string(Val);
+unpack_tag_val('TeletexString', Val)     -> unpack_teletex_string(Val);
+unpack_tag_val('IA5String', Val)         -> unpack_ia5_string(Val);
+unpack_tag_val('BMPString', Val)         -> unpack_bmp_string(Val).
 
 %%--------------------------------------------------------------------
-asn1_decode_tag(T, <<Rest0/binary>>) ->
-    TagClass = asn1_class((T band 2#11000000) bsr 6),
-    TagEncoding = asn1_encoding((T band 2#00100000) bsr 5),
-    {TagNumber, Rest} = asn1_tag_number(T band 2#00011111, Rest0),
-    Asn1Tag = #asn1_tag{
-                 class = TagClass,
-                 encoding = TagEncoding,
-                 tag_num = TagNumber,
-                 id = asn1_tag(TagNumber)
-                },
-    {Length, Rest1} = asn1_length_octets(Rest),
-    <<Raw:Length/binary, Rest2/binary>> = Rest1,
-    Asn1Tlv = #asn1_tlv{tag = Asn1Tag,
-                        len = Length,
-                        val = Raw},
-    {Asn1Tlv, Rest2}.
+unpack_boolean(<<0>>)     -> false;
+unpack_boolean(<<16#FF>>) -> true.
 
 %%--------------------------------------------------------------------
-asn1_class(0) -> universal;
-asn1_class(1) -> application;
-asn1_class(2) -> context;
-asn1_class(3) -> private.
+unpack_integer(Val) ->
+    binary_to_integer(Val).
 
 %%--------------------------------------------------------------------
-asn1_encoding(0) -> primitive;
-asn1_encoding(1) -> constructed.
+unpack_bit_string(Val) ->
+    Val.
 
 %%--------------------------------------------------------------------
+unpack_octet_string(Val) ->
+    Val.
+
+%%--------------------------------------------------------------------
+unpack_null(Val) ->
+    Val.
+
+%%--------------------------------------------------------------------
+unpack_object_identifier(Val) ->
+    decode_object_identifier(Val).
+
+%%--------------------------------------------------------------------
+unpack_utf8_string(Val) ->
+    unicode:characters_to_binary(Val, utf8).
+
+%%--------------------------------------------------------------------
+unpack_printable_string(Val) ->
+    Val.
+
+%%--------------------------------------------------------------------
+unpack_teletex_string(Val) ->
+    Val.
+
+%%--------------------------------------------------------------------
+unpack_ia5_string(Val) ->
+    Val.
+
+%%--------------------------------------------------------------------
+unpack_bmp_string(Val) ->
+    Val.
+
+
+%%--------------------------------------------------------------------
+decode_object_identifier(<<OID/binary>>) ->
+    decode_object_identifier(binary_to_list(OID), []).
+
+%%--------------------------------------------------------------------
+decode_object_identifier(L, Acc) ->
+    {{N1, N2}, Rest} = decode_object_identifier_init(L),
+    decode_object_identifier_rest(Rest, [$., i2l(N2), $., i2l(N1) | Acc]).
+
+%%--------------------------------------------------------------------
+decode_object_identifier_init([B0|T]) ->
+    case B0 div 40 of
+        N when N =:= 0; N =:= 1 ->
+            {{N, B0 rem 40}, T};
+        2 ->
+            {{2, B0 - 80}, T}
+    end.
+
+%%--------------------------------------------------------------------
+decode_object_identifier_rest([Byte], Acc) when ?bit7_clear(Byte) ->
+    lists:reverse([i2l(Byte) | Acc]);
+decode_object_identifier_rest([Byte|T], Acc) when ?bit7_clear(Byte) ->
+    decode_object_identifier_rest(T, [$., i2l(Byte) | Acc]);
+decode_object_identifier_rest([_|_] = L, Acc) ->
+    {N, Rest} = decode_object_identifier_multibyte(L, 0),
+    decode_object_identifier_rest(Rest, [$., i2l(N) | Acc]).
+
+%%--------------------------------------------------------------------
+decode_object_identifier_multibyte([N|T], Acc) when ?bit7_set(N) ->
+    decode_object_identifier_multibyte(T, shift7_and_add(Acc, N));
+decode_object_identifier_multibyte([N|T], Acc) -> % end of multibyte seq
+    {shift7_and_add(Acc, N), T}.
+
+%%--------------------------------------------------------------------
+-compile({inline, [{i2l, 1}]}).
+i2l(N) -> integer_to_list(N).
+
+%%--------------------------------------------------------------------
+-compile({inline, [{bit8_clear, 1}]}).
+bit8_clear(N) ->
+    N band 16#7F.
+
+%%--------------------------------------------------------------------
+-compile({inline, [{shift7_and_add, 2}]}).
+shift7_and_add(Sum, N) ->
+    (Sum bsl 7) bor bit8_clear(N).
+
+%%--------------------------------------------------------------------
+-spec asn1_tag_val(TagName) -> TagNum when
+      TagName :: atom(), TagNum :: asn1_tag().
+asn1_tag_val('BOOLEAN'          ) -> 16#01;
+asn1_tag_val('INTEGER'          ) -> 16#02;
+asn1_tag_val('BIT STRING'       ) -> 16#03;
+asn1_tag_val('OCTET STRING'     ) -> 16#04;
+asn1_tag_val('NULL'             ) -> 16#05;
+asn1_tag_val('OBJECT IDENTIFIER') -> 16#06;
+asn1_tag_val('UTF8String'       ) -> 16#0C;
+asn1_tag_val('SEQUENCE'         ) -> 16#10;
+asn1_tag_val('PrintableString'  ) -> 16#13;
+asn1_tag_val('TeletexString'    ) -> 16#14;
+asn1_tag_val('IA5String'        ) -> 16#16;
+asn1_tag_val('BMPString'        ) -> 16#1E;
+asn1_tag_val(TagName            ) -> throw({unhandled_tag_name, TagName}).
+
+%%--------------------------------------------------------------------
+-spec asn1_tag(TagNum) -> TagName when
+      TagNum :: asn1_tag(), TagName :: atom().
+
 asn1_tag(16#01) -> 'BOOLEAN';
 asn1_tag(16#02) -> 'INTEGER';
 asn1_tag(16#03) -> 'BIT STRING';
@@ -595,108 +725,13 @@ asn1_tag(16#13) -> 'PrintableString';
 asn1_tag(16#14) -> 'TeletexString';
 asn1_tag(16#16) -> 'IA5String';
 asn1_tag(16#1E) -> 'BMPString';
-asn1_tag(Tag)   -> Tag.
+asn1_tag(Tag)   -> throw({unhandled_asn1_tag, Tag}).
 
 %%--------------------------------------------------------------------
-asn1_length_octets(<<L, _/binary>>) when ?asn1_indefinite_form(L) ->
-    throw({der_error, indefinite_length_form_not_allowed});
-asn1_length_octets(<<L, Data/binary>>) when ?asn1_short_form(L) ->
-    {L, Data};
-asn1_length_octets(<<L, Data/binary>>) when ?asn1_long_form(L) ->
-    NumOctets = (L band 2#01111111),
-    <<Len:NumOctets/big-unit:8, Rest/binary>> = Data,
-    {Len, Rest}.
+-spec rearrange_topics(list()) -> list().
 
-%%--------------------------------------------------------------------
-asn1_tag_number(N, <<Rest/binary>>) when 0 =< N, N < 30 ->
-    {N, Rest};
-asn1_tag_number(N, <<Rest/binary>>) when N >= 31 ->
-    % Find all octets in Rest with bit 8 == 1. The last octet
-    % will have bit 8 == 0. The value is the concatenation of
-    % the lower 7 bits of all these octets.
-    asn1_tag_octets(Rest, 0).
-
-%%--------------------------------------------------------------------
-asn1_tag_octets(<<Octets/binary>>) ->
-    asn1_tag_octets(Octets, 0).
-
-asn1_tag_octets(<<O, Rest/binary>>, Sum0) when O band 2#10000000 /= 0 ->
-    Sum = (Sum0 bsl 7) bor (O band 2#01111111),
-    asn1_tag_octets(Rest, Sum);
-asn1_tag_octets(<<O, Rest/binary>>, Sum0) when O band 2#10000000 == 0 ->
-    {(Sum0 bsl 7) bor (O band 2#01111111), Rest};
-asn1_tag_octets(<<Data/binary>>, _Sum) ->
-    throw({der_error, {invalid_tag_octets, Data}}).
-
-%%--------------------------------------------------------------------
--spec asn1_decode_sequence(Bytes, SeqLen) -> {Seq, Rest} when
-      Bytes :: binary(), SeqLen :: integer(),
-      Seq :: [asn1_tlv_rec()], Rest :: binary().
-asn1_decode_sequence(<<Bytes/binary>>, SeqLen) ->
-    asn1_decode_sequence(Bytes, [], SeqLen).
-
-asn1_decode_sequence(<<Rest/binary>>, Acc, 0) ->
-    {[asn1_decode_tlv(Tlv) || Tlv <- lists:reverse(Acc)], Rest};
-asn1_decode_sequence(<<Bytes/binary>>, Acc, SeqLen) ->
-    case asn1_decode(Bytes) of
-        {Asn1Tlv, <<Rest/bytes>>} ->
-            BytesDecoded = byte_size(Bytes) - byte_size(Rest),
-            asn1_decode_sequence(Rest, [Asn1Tlv | Acc], SeqLen - BytesDecoded);
-        [{_T,_L,_V}] = Seq ->
-            asn1_decode_sequence(<<>>, [Seq | Acc], 0);
-        {_T,_L,_V} = Tlv ->
-            asn1_decode_sequence(<<>>, [Tlv | Acc], 0)
-    end.
-
-
-%%--------------------------------------------------------------------
-asn1_decode_tlv(#asn1_tlv{tag=Tag, len=Len, val=Val}) ->
-    asn1_decode_tlv(Tag, Len, Val);
-asn1_decode_tlv({Tag, Len, Val}) ->
-    asn1_decode_prim(Tag, Len, Val);
-asn1_decode_tlv([{Tag, Len, Val}]) ->
-    {Tag, Len, Val};
-asn1_decode_tlv({[{T, L, V}], <<>>}) ->
-    {[asn1_decode_prim(T, L, V)]};
-asn1_decode_tlv({[_|_] = List, Rest}) ->
-    {[asn1_decode_prim(T, L, V) || {T, L, V} <- List], Rest}.
-
-
-%%--------------------------------------------------------------------
-asn1_decode_tlv(#asn1_tag{id=Id}, Len, Val) when Id == 'UTF8String' orelse
-                                                 Id == 'PrintableString' orelse
-                                                 Id == 'TeletexString' orelse
-                                                 Id == 'IA5String' orelse
-                                                 Id == 'BMPString' ->
-    asn1_decode_prim(Id, Len, Val);
-asn1_decode_tlv(#asn1_tag{id='SEQUENCE'}, Len, Val) ->
-    Seq = asn1_decode_sequence(Val, Len),
-    [asn1_decode_tlv(Tlv) || #asn1_tlv{} = Tlv <- Seq].
-
-
-%%--------------------------------------------------------------------
-asn1_decode_prim('UTF8String' = Tag, Len, Val) ->
-    {Tag, Len, unicode:characters_to_binary(Val, utf8)};
-asn1_decode_prim('PrintableString' = Tag, Len, Val) ->
-    {Tag, Len, Val};
-asn1_decode_prim('TeletexString' = Tag, Len, Val) ->
-    {Tag, Len, Val};
-asn1_decode_prim('IA5String' = Tag, Len, Val) ->
-    {Tag, Len, Val};
-asn1_decode_prim('BMPString' = Tag, Len, Val) ->
-    {Tag, Len, Val};
-asn1_decode_prim(Tag, Len, Val) ->
-    throw({der_error, {unhandled_tlv, {Tag, Len, Val}}}).
-
-%%--------------------------------------------------------------------
-canonicalize({Internal, <<>>}) ->
-    canonicalize(Internal);
-canonicalize([{_,_,V1},{_,_,V2}|T]) ->
-    [{V1, V2}|canonicalize(T)];
-canonicalize([{_,_,_}]=L) ->
-    L;
-canonicalize({_,_,_}=T) ->
-    T;
-canonicalize([]) ->
+rearrange_topics([<<TopicName/binary>>, [<<TopicType/binary>>]|T]) ->
+    [{TopicName, TopicType} | rearrange_topics(T)];
+rearrange_topics([]) ->
     [].
 
