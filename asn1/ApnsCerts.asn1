@@ -1,0 +1,95 @@
+ApnsCerts {
+    iso(1) member-body(2) us(840) apple(113635) appleDataSecurity(100)
+    appleCertificateExtensions(6) applePushCertificates(3)
+}
+
+DEFINITIONS ::=
+
+BEGIN
+
+push-certs              OBJECT IDENTIFIER ::= {
+    iso(1) member-body(2) us(840) apple(113635) appleDataSecurity(100)
+    appleCertificateExtensions(6) applePushCertificates(3)
+}
+
+id-apns-development     OBJECT IDENTIFIER ::= {push-certs 1}
+id-apns-production      OBJECT IDENTIFIER ::= {push-certs 2}
+id-apns-bundle-id       OBJECT IDENTIFIER ::= {push-certs 3}
+id-apns-bundle-info     OBJECT IDENTIFIER ::= {push-certs 4}
+id-apns-topics          OBJECT IDENTIFIER ::= {push-certs 6}
+
+EXTENSION-CLASS ::= CLASS {
+        &id OBJECT IDENTIFIER UNIQUE,
+        &Type OPTIONAL}
+   WITH SYNTAX {
+        ID &id
+        [TYPE &Type] }
+
+ApplePushExtension ::=  SEQUENCE {
+    extnID      EXTENSION-CLASS.&id({SupportedExtensions}),
+    critical    BOOLEAN DEFAULT FALSE,
+    extnValue   EXTENSION-CLASS.&Type({SupportedExtensions}{@extnID}) }
+
+SupportedExtensions EXTENSION-CLASS ::= {
+    apnsDevelopment | apnsProduction | apnsBundleID | apnsBundleInfo |
+    apnsTopics
+}
+
+apnsDevelopment EXTENSION-CLASS ::= {
+    ID id-apns-development
+    TYPE ApnsDevelopment
+}
+
+apnsProduction  EXTENSION-CLASS ::= {
+    ID id-apns-production
+    TYPE ApnsProduction
+}
+
+apnsBundleID  EXTENSION-CLASS ::= {
+    ID id-apns-bundle-id
+    TYPE ApnsBundleID
+}
+
+apnsBundleInfo EXTENSION-CLASS ::= {
+    ID id-apns-bundle-info
+    TYPE ApnsBundleInfo
+}
+
+apnsTopics EXTENSION-CLASS ::= {
+    ID id-apns-topics
+    TYPE ApnsTopics
+}
+
+ApnsDevelopment     ::= NULL
+ApnsProduction      ::= NULL
+ApnsBundleID        ::= UTF8String
+ApnsBundleInfo      ::= UTF8String
+
+ApnsTopics          ::= SEQUENCE SIZE(1..MAX) OF ApnsTopic
+
+ApnsTopic           ::= CHOICE {
+    name                ApnsTopicName,
+    type                ApnsTopicType
+}
+
+ApnsTopicName       ::= UTF8String
+ApnsTopicType       ::= SEQUENCE { name UTF8String }
+
+--
+-- Utility definitions to help with assorted
+-- decoding tasks, if required.
+--
+TBoolean           ::= BOOLEAN
+TInteger           ::= INTEGER
+TBitString         ::= BIT STRING
+TOctetString       ::= OCTET STRING
+TNull              ::= NULL
+TObjectIdentifier  ::= OBJECT IDENTIFIER
+TUTF8String        ::= UTF8String
+TPrintableString   ::= PrintableString
+TTeletexString     ::= TeletexString
+TIA5String         ::= IA5String
+TBMPString         ::= BMPString
+
+
+END

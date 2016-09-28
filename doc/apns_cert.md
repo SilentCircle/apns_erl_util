@@ -38,7 +38,7 @@ cert_info() = term()
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#asn1_decode-1">asn1_decode/1</a></td><td></td></tr><tr><td valign="top"><a href="#decode_cert-1">decode_cert/1</a></td><td>Decode binary certificate data into an <code>#'OTPCertificate'{}</code>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#decode_cert-1">decode_cert/1</a></td><td>Decode binary certificate data into an <code>#'OTPCertificate'{}</code>
 record.</td></tr><tr><td valign="top"><a href="#der_decode_cert-1">der_decode_cert/1</a></td><td>Decode DER binary into an #'OTPCertificate'{} record.</td></tr><tr><td valign="top"><a href="#get_cert_info-1">get_cert_info/1</a></td><td>Extract interesting APNS-related info from cert.</td></tr><tr><td valign="top"><a href="#get_cert_info_map-1">get_cert_info_map/1</a></td><td>Extract more interesting APNS-related info from cert and
 return in a map.</td></tr><tr><td valign="top"><a href="#pem_decode_certs-1">pem_decode_certs/1</a></td><td>Decode PEM binary into a list of #'OTPCertificate'{} records.</td></tr><tr><td valign="top"><a href="#validate-3">validate/3</a></td><td>Validate that the <code>BundleSeedID</code> and <code>BundleID</code> correspond to the
 certificate data <code>CertData</code>.</td></tr></table>
@@ -47,16 +47,6 @@ certificate data <code>CertData</code>.</td></tr></table>
 <a name="functions"></a>
 
 ## Function Details ##
-
-<a name="asn1_decode-1"></a>
-
-### asn1_decode/1 ###
-
-<pre><code>
-asn1_decode(Tlv) -&gt; Result
-</code></pre>
-
-<ul class="definitions"><li><code>Tlv = undefined | binary()</code></li><li><code>Result = {Decoded, Rest}</code></li><li><code>Decoded = term()</code></li><li><code>Rest = binary()</code></li></ul>
 
 <a name="decode_cert-1"></a>
 
