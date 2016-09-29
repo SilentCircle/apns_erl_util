@@ -23,6 +23,7 @@
                   stdlib,
                   public_key,
                   jsx,
+                  uuid,
                   sc_util
                  ]},
   {env, []}
