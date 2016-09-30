@@ -38,13 +38,15 @@
         ]).
 
 -export_type([
-                bstring/0
-              , http2_hdrs/0
+                base64_urlencoded/0
+              , bstring/0
               , http2_hdr/0
-              , http2_req_body/0
+              , http2_hdrs/0
               , http2_req/0
-              , http2_rsp_body/0
+              , http2_req_body/0
               , http2_rsp/0
+              , http2_rsp_body/0
+              , jwt/0
               , parsed_rsp/0
               , parsed_rsp_val/0
               , req_opt/0
@@ -55,30 +57,36 @@
 %%--------------------------------------------------------------------
 %% Types
 %%--------------------------------------------------------------------
--type bstring()        :: binary().
--type http2_hdr()      :: {Key :: bstring(), Val :: bstring()}.
--type http2_hdrs()     :: [http2_hdr()].
--type http2_req_body() :: bstring().
--type http2_req()      :: {http2_hdrs(), http2_req_body()}.
--type http2_rsp_body() :: undefined | [bstring()].
--type http2_rsp()      :: {http2_hdrs(), http2_rsp_body()}.
--type uuid_str()       :: bstring().
--type parsed_rsp_val() :: {id, uuid_str()}
-                        | {status, bstring()}
-                        | {status_desc, bstring()}
-                        | {reason, bstring()}
-                        | {reason_desc, bstring()}
-                        | {timestamp, non_neg_integer() | undefined}
-                        | {timestamp_desc, bstring() | undefined}
-                        | {body, term()}.
+-type bstring()           :: binary().
+-type base64_urlencoded() :: bstring().
+-type jwt()               :: base64_urlencoded().
+-type http2_hdr()         :: {Key :: bstring(), Val :: bstring()}.
+-type http2_hdrs()        :: [http2_hdr()].
+-type http2_req_body()    :: bstring().
+-type http2_req()         :: {http2_hdrs(), http2_req_body()}.
+-type http2_rsp_body()    :: undefined | [bstring()].
+-type http2_rsp()         :: {http2_hdrs(), http2_rsp_body()}.
+-type uuid_str()          :: bstring().
+-type parsed_rsp_val()    :: {id, uuid_str()}
+                           | {status, bstring()}
+                           | {status_desc, bstring()}
+                           | {reason, bstring()}
+                           | {reason_desc, bstring()}
+                           | {timestamp, non_neg_integer() | undefined}
+                           | {timestamp_desc, bstring() | undefined}
+                           | {body, term()}.
 
--type parsed_rsp()     :: [parsed_rsp_val()].
--type req_opt()        :: {id, uuid_str()}
-                        | {topic, bstring()}
-                        | {expiration, non_neg_integer()}
-                        | {priority, non_neg_integer()}.
+-type parsed_rsp()        :: [parsed_rsp_val()].
+-type req_opt()           :: {authorization, jwt()}
+                           | {id, uuid_str()}
+                           | {expiration, non_neg_integer()}
+                           | {priority, non_neg_integer()}
+                           | {topic, bstring()}
+                           | {collapse_id, bstring()}
+                           | {thread_id, bstring()}
+                           .
 
--type req_opts()       :: [req_opt()].
+-type req_opts()          :: [req_opt()].
 
 %%%-------------------------------------------------------------------
 %%% API
@@ -87,55 +95,86 @@
 %%--------------------------------------------------------------------
 %% @doc Create an HTTP/2 request ready to send.
 %%
+%% === Parameters ===
+%%
 %% <dl>
 %% <dt>`Token'</dt>
 %%    <dd>The APNS token as a hexadecimal binary string.</dd>
+%%
 %% <dt>`JSON'</dt>
 %%    <dd>The formatted JSON payload as a binary string.</dd>
+%%
 %% <dt>`Opts'</dt>
 %%    <dd>A proplist containing one or more of the following:
-%%      <ul>
-%%        <li>`{id, uuid_str()}': A canonical UUID that identifies the
-%%        notification. If there is an error sending the notification, APNs
-%%        uses this value to identify the notification to your server.  The
-%%        canonical form is 32 lowercase hexadecimal digits, displayed in five
-%%        groups separated by hyphens in the form 8-4-4-4-12. An example UUID
-%%        is as follows: `123e4567-e89b-12d3-a456-42665544000'. If you omit
-%%        this header, a new UUID is created by APNs and returned in the
-%%        response.</li>
+%%      <dl>
+%%        <dt>`{authorization, jwt()}'</dt>
+%%           <dd>The provider token that authorizes APNs to send push
+%%           notifications for the specified topics. The token is in
+%%           Base64URL-encoded JWT format.  When the provider certificate is
+%%           used to establish a connection, this request header is
+%%           ignored.</dd>
 %%
-%%        <li>`{topic, string | bstring()}': The topic of the remote
-%%        notification, which is typically the bundle ID for your app. The
-%%        certificate you create in Member Center must include the capability
-%%        for this topic.  If your certificate includes multiple topics, you
-%%        must specify a value for this header.  If you omit this header and
-%%        your APNs certificate does not specify multiple topics, the APNs
-%%        server uses the certificate’s Subject as the default topic.</li>
+%%        <dt>`{id, uuid_str()}'</dt>
+%%           <dd>A canonical UUID that identifies the notification. If there is
+%%           an error sending the notification, APNs uses this value to
+%%           identify the notification to your server.  The canonical form is
+%%           32 lowercase hexadecimal digits, displayed in five groups
+%%           separated by hyphens in the form 8-4-4-4-12. An example UUID is as
+%%           follows: `123e4567-e89b-12d3-a456-42665544000'. If you omit this
+%%           header, a new UUID is created by APNs and returned in the
+%%           response.</dd>
 %%
-%%        <li>`{priority, non_neg_integer()}': The priority of the notification.
-%%        Specify one of the following values:
-%%          <ul>
-%%            <li>`10'–Send the push message immediately. Notifications with this
-%%            priority must trigger an alert, sound, or badge on the target
-%%            device. It is an error to use this priority for a push notification
-%%            that contains only the content-available key.</li>
-%%            <li>`5'—Send the push message at a time that takes into account
-%%            power considerations for the device. Notifications with this
-%%            priority might be grouped and delivered in bursts. They are
-%%            throttled, and in some cases are not delivered.  If you omit this
-%%            header, the APNs server sets the priority to `10'.</li>
-%%          </ul>
-%%        </li>
-%%        <li>`{expiration, non_neg_integer()}': A UNIX epoch date expressed in
-%%        seconds (UTC). This header identifies the date when the notification is
-%%        no longer valid and can be discarded.  If this value is nonzero, APNs
-%%        stores the notification and tries to deliver it at least once,
-%%        repeating the attempt as needed if it is unable to deliver the
-%%        notification the first time. If the value is `0', APNs treats the
-%%        notification as if it expires immediately and does not store the
-%%        notification or attempt to redeliver it.</li>
-%%      </ul>
+%%        <dt>`{expiration, non_neg_integer()}'</dt>
+%%           <dd>A UNIX epoch date expressed in seconds (UTC). This header
+%%           identifies the date when the notification is no longer valid and
+%%           can be discarded.  If this value is nonzero, APNs stores the
+%%           notification and tries to deliver it at least once, repeating the
+%%           attempt as needed if it is unable to deliver the notification the
+%%           first time. If the value is `0', APNs treats the notification as
+%%           if it expires immediately and does not store the notification or
+%%           attempt to redeliver it.</dd>
+%%
+%%        <dt>`{priority, non_neg_integer()}'</dt>
+%%           <dd>The priority of the notification.  Specify one of the following
+%%           values:
+%%             <ul>
+%%               <li>`10'–Send the push message immediately. Notifications with
+%%               this priority must trigger an alert, sound, or badge on the
+%%               target device. It is an error to use this priority for a push
+%%               notification that contains only the content-available
+%%               key.</li>
+%%
+%%               <li>`5'—Send the push message at a time that takes into
+%%               account power considerations for the device. Notifications
+%%               with this priority might be grouped and delivered in bursts.
+%%               They are throttled, and in some cases are not delivered.  If
+%%               you omit this header, the APNs server sets the priority to
+%%               `10'.</li>
+%%             </ul>
+%%           </dd>
+%%
+%%        <dt>`{topic, string() | bstring()}'</dt>
+%%           <dd>The topic of the remote notification, which is typically the
+%%           bundle ID for your app. The certificate you create in Member
+%%           Center must include the capability for this topic.  If your
+%%           certificate includes multiple topics, you must specify a value for
+%%           this header.  If you omit this header and your APNs certificate
+%%           does not specify multiple topics, the APNs server uses the
+%%           certificate’s Subject as the default topic.</dd>
+%%
+%%        <dt>`{collapse_id, string() | bstring()}'</dt>
+%%            <dd>Multiple notifications with same collapse identifier are
+%%            displayed to the user as a single notification. The value should
+%%            not exceed 64 bytes.</dd>
+%%
+%%        <dt>`{thread_id, string() | bstring()}'</dt>
+%%            <dd>When displaying notifications, the system visually groups
+%%            notifications with the same thread identifier together.  For
+%%            remote notifications, the value of the `threadIdentifier'
+%%            property is set to the value of this request header.</dd>
+%%      </dl>
 %%    </dd>
+%%
 %% <dt>`APNSId'</dt>
 %%    <dd>A unique id for this request</dd>
 %% </dl>
@@ -154,7 +193,10 @@ make_req(Token, JSON, Opts) when is_list(Opts) ->
     {ReqHdrs, ReqBody}.
 
 %%--------------------------------------------------------------------
-%% make_req_hdrs/4
+%% @doc Create HTTP/2 request headers for an APNS request.
+%% `Opts' is a property list of supported optional headers.
+%% @see make_req/3
+%% @end
 %%--------------------------------------------------------------------
 -spec make_req_hdrs(Method, Path, Scheme, Opts) -> Headers
     when Method :: string() | bstring(), Path :: string() | bstring(),
@@ -243,27 +285,16 @@ parse_resp_body(undefined) ->
 %%--------------------------------------------------------------------
 -spec status_desc(Status) -> Desc
     when Status :: bstring(), Desc :: bstring().
-status_desc(<<"200">>) ->
-    <<"Success">>;
-status_desc(<<"400">>) ->
-    <<"Bad request">>;
-status_desc(<<"403">>) ->
-    <<"There was an error with the certificate.">>;
-status_desc(<<"405">>) ->
-    <<
-      "The request used a bad :method value. Only POST requests are "
-      "supported."
-    >>;
-status_desc(<<"410">>) ->
-    <<"The device token is no longer active for the topic.">>;
-status_desc(<<"413">>) ->
-    <<"The notification payload was too large.">>;
-status_desc(<<"429">>) ->
-    <<"The server received too many requests for the same device token.">>;
-status_desc(<<"500">>) ->
-    <<"Internal server error">>;
-status_desc(<<"503">>) ->
-    <<"The server is shutting down and unavailable.">>;
+status_desc(<<"200">>) -> <<"Success">>;
+status_desc(<<"400">>) -> <<"Bad request">>;
+status_desc(<<"403">>) -> <<"There was an error with the certificate.">>;
+status_desc(<<"404">>) -> <<"The path was bad.">>;
+status_desc(<<"405">>) -> <<"The request used a bad :method value. Only POST requests are supported." >>;
+status_desc(<<"410">>) -> <<"The device token is no longer active for the topic.">>;
+status_desc(<<"413">>) -> <<"The notification payload was too large.">>;
+status_desc(<<"429">>) -> <<"The server received too many requests for the same device token.">>;
+status_desc(<<"500">>) -> <<"Internal server error">>;
+status_desc(<<"503">>) -> <<"The server is shutting down and unavailable.">>;
 status_desc(<<B/bytes>>) ->
     list_to_binary([<<"Unknown status ">>, B]).
 
@@ -273,61 +304,65 @@ status_desc(<<B/bytes>>) ->
 %%--------------------------------------------------------------------
 -spec reason_desc(Reason) -> Desc
     when Reason :: bstring(), Desc :: bstring().
-reason_desc(<<"PayloadEmpty">>) ->
-    <<"The message payload was empty.">>;
-reason_desc(<<"PayloadTooLarge">>) ->
-    <<"The message payload was too large. The maximum payload size is 4096 "
-      "bytes.">>;
-reason_desc(<<"BadTopic">>) ->
-    <<"The apns-topic was invalid.">>;
-reason_desc(<<"TopicDisallowed">>) ->
-    <<"Pushing to this topic is not allowed.">>;
-reason_desc(<<"BadMessageId">>) ->
-    <<"The apns-id value is bad.">>;
-reason_desc(<<"BadExpirationDate">>) ->
-    <<"The apns-expiration value is bad.">>;
-reason_desc(<<"BadPriority">>) ->
-    <<"The apns-priority value is bad.">>;
-reason_desc(<<"MissingDeviceToken">>) ->
-    <<"The device token is not specified in the request :path. Verify that "
-      "the :path header contains the device token.">>;
-reason_desc(<<"BadDeviceToken">>) ->
-    <<
-      "The specified device token was bad. Verify that the request contains "
-      "a valid token and that the token matches the environment."
-    >>;
-reason_desc(<<"DeviceTokenNotForTopic">>) ->
-    <<"The device token does not match the specified topic.">>;
-reason_desc(<<"Unregistered">>) ->
-    <<"The device token is inactive for the specified topic.">>;
-reason_desc(<<"DuplicateHeaders">>) ->
-    <<"One or more headers were repeated.">>;
-reason_desc(<<"BadCertificateEnvironment">>) ->
-    <<"The client certificate was for the wrong environment.">>;
-reason_desc(<<"BadCertificate">>) ->
-    <<"The certificate was bad.">>;
-reason_desc(<<"Forbidden">>) ->
-    <<"The specified action is not allowed.">>;
-reason_desc(<<"BadPath">>) ->
-    <<"The request contained a bad :path value.">>;
-reason_desc(<<"MethodNotAllowed">>) ->
-    <<"The specified :method was not POST.">>;
-reason_desc(<<"TooManyRequests">>) ->
-    <<"Too many requests were made consecutively to the same device token.">>;
-reason_desc(<<"IdleTimeout">>) ->
-    <<"Idle time out.">>;
-reason_desc(<<"Shutdown">>) ->
-    <<"The server is shutting down.">>;
-reason_desc(<<"InternalServerError">>) ->
-    <<"An internal server error occurred.">>;
-reason_desc(<<"ServiceUnavailable">>) ->
-    <<"The service is unavailable.">>;
-reason_desc(<<"MissingTopic">>) ->
-    <<
-      "The apns-topic header of the request was not specified and was "
-      "required. The apns-topic header is mandatory when the client is "
-      "connected using a certificate that supports multiple topics."
-    >>;
+
+%% 400 Errors
+
+reason_desc(<<"BadCollapseId"              >>) -> <<"The collapse identifier exceeds the maximum allowed size.">>;
+reason_desc(<<"BadDeviceToken"             >>) -> <<"The specified device token was bad. Verify that the request contains a valid token and that the token matches the environment.">>;
+
+reason_desc(<<"BadExpirationDate"          >>) -> <<"The apns-expiration value is bad.">>;
+reason_desc(<<"BadMessageId"               >>) -> <<"The apns-id value is bad.">>;
+reason_desc(<<"BadPriority"                >>) -> <<"The apns-priority value is bad.">>;
+reason_desc(<<"BadTopic"                   >>) -> <<"The apns-topic was invalid.">>;
+reason_desc(<<"DeviceTokenNotForTopic"     >>) -> <<"The device token does not match the specified topic.">>;
+reason_desc(<<"DuplicateHeaders"           >>) -> <<"One or more headers were repeated.">>;
+reason_desc(<<"IdleTimeout"                >>) -> <<"Idle time out.">>;
+reason_desc(<<"MissingDeviceToken"         >>) -> <<"The device token is not specified in the request :path. Verify that the :path header contains the device token.">>;
+reason_desc(<<"MissingTopic"               >>) -> <<"The apns-topic header of the request was not specified and was required. The apns-topic header is mandatory when the client is connected using a certificate that supports multiple topics.">>;
+reason_desc(<<"PayloadEmpty"               >>) -> <<"The message payload was empty.">>;
+reason_desc(<<"TopicDisallowed"            >>) -> <<"Pushing to this topic is not allowed.">>;
+
+%% 403 Errors
+
+reason_desc(<<"BadCertificate"             >>) -> <<"The certificate was bad.">>;
+reason_desc(<<"BadCertificateEnvironment"  >>) -> <<"The client certificate was for the wrong environment.">>;
+reason_desc(<<"ExpiredProviderToken"       >>) -> <<"The provider token is not valid or the token signature could not be verified.">>;
+reason_desc(<<"Forbidden"                  >>) -> <<"The specified action is not allowed.">>;
+reason_desc(<<"InvalidProviderToken"       >>) -> <<"The provider token is not valid or the token signature could not be verified.">>;
+reason_desc(<<"MissingProviderToken"       >>) -> <<"No provider certificate was used to connect to APNs and Authorization header was missing or no provider token was specified">>;
+
+%% 404 Errors
+
+reason_desc(<<"BadPath"                    >>) -> <<"The request contained a bad :path value.">>;
+
+%% 405 Errors
+
+reason_desc(<<"MethodNotAllowed"           >>) -> <<"The specified :method was not POST.">>;
+
+%% 410 Errors
+
+reason_desc(<<"Unregistered"               >>) -> <<"The device token is inactive for the specified topic.">>;
+
+%% 413 Errors
+
+reason_desc(<<"PayloadTooLarge"            >>) -> <<"The message payload was too large. The maximum payload size is 4096 bytes.">>;
+
+%% 429 Errors
+
+reason_desc(<<"TooManyProviderTokenUpdates">>) -> <<"The provider token is being updated too often.">>;
+reason_desc(<<"TooManyRequests"            >>) -> <<"Too many requests were made consecutively to the same device token.">>;
+
+%% 500 Errors
+
+reason_desc(<<"InternalServerError"        >>) -> <<"An internal server error occurred.">>;
+
+%% 503 Errors
+
+reason_desc(<<"ServiceUnavailable"         >>) -> <<"The service is unavailable.">>;
+reason_desc(<<"Shutdown"                   >>) -> <<"The server is shutting down.">>;
+
+%% Catchall
+
 reason_desc(<<Other/bytes>>) ->
     Other.
 
@@ -364,11 +399,15 @@ host_port(dev)  -> {"api.development.push.apple.com", 443}.
     when Opts :: req_opts(), Headers :: http2_hdrs().
 apns_opts(Opts) ->
     lists:foldl(
-      fun({id, V}, Acc)         -> [{<<"apns-id">>, b(V)} | Acc];
-         ({topic, V}, Acc)      -> [{<<"apns-topic">>, b(V)} | Acc];
-         ({expiration, V}, Acc) -> [{<<"apns-expiration">>, b(V)} | Acc];
-         ({priority, V}, Acc)   -> [{<<"apns-priority">>, b(V)} | Acc];
-         (Unsupp, _Acc)         -> throw({unsupported_apns_opt, Unsupp})
+      fun
+          ({authorization, V}, Acc) -> [{<<"authorization">>, bearer(V)} | Acc];
+          ({id, V}, Acc)            -> [{<<"apns-id">>, b(V)} | Acc];
+          ({expiration, V}, Acc)    -> [{<<"apns-expiration">>, b(V)} | Acc];
+          ({priority, V}, Acc)      -> [{<<"apns-priority">>, b(V)} | Acc];
+          ({topic, V}, Acc)         -> [{<<"apns-topic">>, b(V)} | Acc];
+          ({collapse_id, V}, Acc)   -> [{<<"apns-collapse-id">>, b(V)} | Acc];
+          ({thread_id, V}, Acc)     -> [{<<"thread-id">>, b(V)} | Acc];
+          (Unsupp, _Acc)            -> throw({unsupported_apns_opt, Unsupp})
       end, [], Opts).
 
 
@@ -386,6 +425,9 @@ timestamp_desc(TS) when is_integer(TS), TS > 0 ->
 
 -compile({inline, [{b, 1}]}).
 b(X) -> sc_util:to_bin(X).
+
+-compile({inline, [{bearer, 1}]}).
+bearer(X) -> b([<<"bearer ">>, b(X)]).
 
 -compile({inline, [{posix_ms_to_iso8601, 1}]}).
 posix_ms_to_iso8601(TS) ->
