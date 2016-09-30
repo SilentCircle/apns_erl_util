@@ -79,16 +79,16 @@ make_req_3_happy_path_test(_Config) ->
     TestOpts = [
                 [], % No opts
 
-                [{id, b(APNSId)}],
+                [{uuid, b(APNSId)}],
 
-                [{id, b(APNSId)},
+                [{uuid, b(APNSId)},
                  {topic, b(Topic)}],
 
-                [{id, b(APNSId)},
+                [{uuid, b(APNSId)},
                  {topic, b(Topic)},
                  {expiration, b(Expiry)}],
 
-                [{id, b(APNSId)},
+                [{uuid, b(APNSId)},
                  {topic, b(Topic)},
                  {expiration, b(Expiry)},
                  {priority, b(Priority)}]
@@ -107,7 +107,7 @@ make_req_3_sad_path_test1(_Config) ->
 %% parse_resp/1
 %%--------------------------------------------------------------------
 parse_resp_test_200(_Config) ->
-    Id = <<"12345">>,
+    Id = apns_lib_http2:make_uuid(),
     Status = <<"200">>,
     StatusDesc = <<"Success">>,
     Reason = undefined,
@@ -117,7 +117,7 @@ parse_resp_test_200(_Config) ->
     validate_resp(PL, Id, Status, StatusDesc, Timestamp).
 
 parse_resp_test_410(_Config) ->
-    Id = <<"23456">>,
+    Id = apns_lib_http2:make_uuid(),
     Status = <<"410">>,
     Timestamp = 1458114061260,
     Reason = <<"Unregistered">>,
@@ -129,7 +129,7 @@ parse_resp_test_410(_Config) ->
     TSDesc = val(timestamp_desc, PL).
 
 parse_resp_test_400(_Config) ->
-    Id = <<"23456">>,
+    Id = apns_lib_http2:make_uuid(),
     Status = <<"400">>,
     Timestamp = undefined,
     Reason = <<"Unregistered">>,
@@ -139,7 +139,7 @@ parse_resp_test_400(_Config) ->
     validate_resp(PL, Id, Status, StatusDesc, Timestamp).
 
 parse_resp_test_5xx(_Config) ->
-    Id = <<"23456">>,
+    Id = apns_lib_http2:make_uuid(),
     Status = <<"510">>,
     Timestamp = undefined,
     Reason = <<"Unknown server issue">>,
@@ -290,7 +290,7 @@ validate_http2_req(Hdrs, Body, Token, JSON, Opts) ->
     Scheme = val(<<":scheme">>, Hdrs),
     Scheme = <<"https">>,
 
-    maybe_validate(id, Opts, <<"apns-id">>, Hdrs),
+    maybe_validate(uuid, Opts, <<"apns-id">>, Hdrs),
     maybe_validate(topic, Opts, <<"apns-topic">>, Hdrs),
     maybe_validate(expiration, Opts, <<"apns-expiration">>, Hdrs),
     maybe_validate(priority, Opts, <<"apns-priority">>, Hdrs),
@@ -343,7 +343,7 @@ make_resp(Id, Status, Reason, Timestamp) ->
 
 
 validate_resp(PL, Id, Status, StatusDesc, Timestamp) ->
-    Id = val(id, PL),
+    Id = val(uuid, PL),
     Status = val(status, PL),
     StatusDesc = val(status_desc, PL),
     case Status of
