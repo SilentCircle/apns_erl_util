@@ -30,38 +30,29 @@
 %%% '#fromlist-apns_error'/2
 %%% '#fromlist-apns_notification'/1
 %%% '#fromlist-apns_notification'/2
-%%% '#fromlist-cert_info'/1
-%%% '#fromlist-cert_info'/2
 %%% '#get-'/2
 %%% '#get-apns_error'/2
 %%% '#get-apns_notification'/2
-%%% '#get-cert_info'/2
 %%% '#info-'/1
 %%% '#info-'/2
 %%% '#info-apns_error'/1
 %%% '#info-apns_notification'/1
-%%% '#info-cert_info'/1
 %%% '#is_record-'/1
 %%% '#is_record-'/2
 %%% '#lens-'/2
 %%% '#lens-apns_error'/1
 %%% '#lens-apns_notification'/1
-%%% '#lens-cert_info'/1
 %%% '#new-'/1
 %%% '#new-apns_error'/0
 %%% '#new-apns_error'/1
 %%% '#new-apns_notification'/0
 %%% '#new-apns_notification'/1
-%%% '#new-cert_info'/0
-%%% '#new-cert_info'/1
 %%% '#pos-'/2
 %%% '#pos-apns_error'/1
 %%% '#pos-apns_notification'/1
-%%% '#pos-cert_info'/1
 %%% '#set-'/2
 %%% '#set-apns_error'/2
 %%% '#set-apns_notification'/2
-%%% '#set-cert_info'/2
 %%% '''
 %%%
 %%% == Generic Function Operations ==
@@ -88,7 +79,7 @@
 %%%
 %%% ```
 %%% apns_recs:'#exported_records-'() ->
-%%%   [apns_notification,apns_error,cert_info]
+%%%   [apns_notification,apns_error]
 %%%
 %%% apns_recs:'#fromlist-'([{cmd,atom_data},
 %%%                         {id,1},
@@ -141,9 +132,6 @@
 %%%   {apns_notification,atom_data,1,1,<<"binary_data">>,<<"binary_data">>,1,
 %%%                      <<"binary_data">>}
 %%%
-%%% apns_recs:'#exported_records-'() ->
-%%%   [apns_notification,apns_error,cert_info]
-%%%
 %%% apns_recs:'#fromlist-'([{id,1},{status,atom_data},{status_code,1},{status_desc,<<"binary_data">>}], {apns_error,0,undefined,0,<<>>}) ->
 %%%   {apns_error,1,atom_data,1,<<"binary_data">>}
 %%%
@@ -178,97 +166,7 @@
 %%%   {apns_error,1,atom_data,1,<<"binary_data">>}
 %%%
 %%% apns_recs:'#exported_records-'() ->
-%%%   [apns_notification,apns_error,cert_info]
-%%%
-%%% apns_recs:'#fromlist-'([{issuer_cn,<<"binary_data">>},
-%%%                         {is_production,false},
-%%%                         {bundle_id,<<"binary_data">>},
-%%%                         {bundle_seed_id,<<"binary_data">>}],
-%%%                         {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
-%%%
-%%% apns_recs:'#get-'([issuer_cn,is_production,bundle_id,bundle_seed_id], {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   [<<>>,false,<<>>,<<>>]
-%%%
-%%% apns_recs:'#info-'(cert_info) ->
-%%%   [issuer_cn,is_production,bundle_id,bundle_seed_id]
-%%%
-%%% apns_recs:'#info-'(cert_info, fields) ->
-%%%   [issuer_cn,is_production,bundle_id,bundle_seed_id]
-%%%
-%%% apns_recs:'#info-'(cert_info, size) ->
-%%%   5
-%%%
-%%% apns_recs:'#is_record-'({cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   true
-%%%
-%%% apns_recs:'#is_record-'(cert_info, {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   true
-%%%
-%%% apns_recs:'#lens-'(issuer_cn, cert_info) ->
-%%%   {#Fun<apns_recs.28.63329237>,#Fun<apns_recs.29.63329237>}
-%%%
-%%% apns_recs:'#new-'(cert_info) ->
-%%%   {cert_info,<<>>,false,<<>>,<<>>}
-%%%
-%%% apns_recs:'#pos-'(cert_info, issuer_cn) ->
-%%%   2
-%%%
-%%% apns_recs:'#set-'([{issuer_cn,<<"binary_data">>},
-%%%                    {is_production,false},
-%%%                    {bundle_id,<<"binary_data">>},
-%%%                    {bundle_seed_id,<<"binary_data">>}],
-%%%                    {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%  {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
-%%%
-%%% '''
-%%%
-%%% == Example 2: cert_info functions ==
-%%%
-%%% This is an example of record-specific functions.
-%%%
-%%% ```
-%%% apns_recs:'#fromlist-cert_info'([{issuer_cn,<<"binary_data">>},
-%%%  {is_production,false},
-%%%  {bundle_id,<<"binary_data">>},
-%%%  {bundle_seed_id,<<"binary_data">>}]) ->
-%%%   {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
-%%%
-%%% apns_recs:'#fromlist-cert_info'([{issuer_cn,<<"binary_data">>},
-%%%  {is_production,false},
-%%%  {bundle_id,<<"binary_data">>},
-%%%  {bundle_seed_id,<<"binary_data">>}], {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
-%%%
-%%% apns_recs:'#get-cert_info'([issuer_cn,is_production,bundle_id,bundle_seed_id], {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   [<<>>,false,<<>>,<<>>]
-%%%
-%%% apns_recs:'#info-cert_info'(fields) ->
-%%%   [issuer_cn,is_production,bundle_id,bundle_seed_id]
-%%%
-%%% apns_recs:'#info-cert_info'(size) ->
-%%%   5
-%%%
-%%% apns_recs:'#lens-cert_info'(issuer_cn) ->
-%%%   {#Fun<apns_recs.28.63329237>,#Fun<apns_recs.29.63329237>}
-%%%
-%%% apns_recs:'#new-cert_info'() ->
-%%%   {cert_info,<<>>,false,<<>>,<<>>}
-%%%
-%%% apns_recs:'#new-cert_info'([{issuer_cn,<<"binary_data">>},
-%%%  {is_production,false},
-%%%  {bundle_id,<<"binary_data">>},
-%%%  {bundle_seed_id,<<"binary_data">>}]) ->
-%%%   {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
-%%%
-%%% apns_recs:'#pos-cert_info'(issuer_cn) ->
-%%%   2
-%%%
-%%% apns_recs:'#set-cert_info'([{issuer_cn,<<"binary_data">>},
-%%%  {is_production,false},
-%%%  {bundle_id,<<"binary_data">>},
-%%%  {bundle_seed_id,<<"binary_data">>}], {cert_info,<<>>,false,<<>>,<<>>}) ->
-%%%   {cert_info,<<"binary_data">>,false,<<"binary_data">>,<<"binary_data">>}
+%%%   [apns_notification,apns_error]
 %%%
 %%% '''
 %%%
@@ -322,23 +220,7 @@
         status_desc = <<>>      :: binary() % binary string
     }).
 
-%%--------------------------------------------------------------------
-%% @type cert_info() = #cert_info {
-%%         issuer_cn = binary(),
-%%         is_production = boolean(),
-%%         bundle_id = binary(),
-%%         bundle_seed_id = binary()
-%%       }.
-%% @end
-%%--------------------------------------------------------------------
--record(cert_info, {
-        issuer_cn = <<>> :: binary(),
-        is_production = false :: boolean(),
-        bundle_id = <<>> :: binary(),
-        bundle_seed_id = <<>> :: binary()
-    }).
-
--export_records([apns_notification, apns_error, cert_info]).
+-export_records([apns_notification, apns_error]).
 
 %%====================================================================
 %% This rather elaborate set of help functions is very useful when
@@ -415,7 +297,7 @@ help(X) when is_atom(X)->
 %%--------------------------------------------------------------------
 %% @doc Return a list of function specs for the given `Recname'.
 %% A function spec is the usual func/arity as an atom, e.g.
-%% `` '#new-cert_info/0' ''.
+%% `` '#new-apns_error/0' ''.
 %% This is intended for debugging and documentation.
 %% @end
 %%--------------------------------------------------------------------
@@ -430,7 +312,6 @@ help(Recname, funcs) when is_atom(Recname) ->
             [mfa_to_funcspec(MFA) || MFA <- MFAs]
     end.
 
-help_mfa(cert_info) -> ?HELP(cert_info);
 help_mfa(apns_notification) -> ?HELP(apns_notification);
 help_mfa(apns_error) -> ?HELP(apns_error);
 help_mfa(_) -> undefined.

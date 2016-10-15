@@ -14,7 +14,7 @@ push-certs              OBJECT IDENTIFIER ::= {
 
 id-apns-development     OBJECT IDENTIFIER ::= {push-certs 1}
 id-apns-production      OBJECT IDENTIFIER ::= {push-certs 2}
-id-apns-bundle-id       OBJECT IDENTIFIER ::= {push-certs 3}
+id-apns-app-id-suffix   OBJECT IDENTIFIER ::= {push-certs 3}
 id-apns-bundle-info     OBJECT IDENTIFIER ::= {push-certs 4}
 id-apns-topics          OBJECT IDENTIFIER ::= {push-certs 6}
 
@@ -31,7 +31,7 @@ ApplePushExtension ::=  SEQUENCE {
     extnValue   EXTENSION-CLASS.&Type({SupportedExtensions}{@extnID}) }
 
 SupportedExtensions EXTENSION-CLASS ::= {
-    apnsDevelopment | apnsProduction | apnsBundleID | apnsBundleInfo |
+    apnsDevelopment | apnsProduction | apnsAppIDSuffix | apnsBundleInfo |
     apnsTopics
 }
 
@@ -45,9 +45,9 @@ apnsProduction  EXTENSION-CLASS ::= {
     TYPE ApnsProduction
 }
 
-apnsBundleID  EXTENSION-CLASS ::= {
-    ID id-apns-bundle-id
-    TYPE ApnsBundleID
+apnsAppIDSuffix  EXTENSION-CLASS ::= {
+    ID id-apns-app-id-suffix
+    TYPE ApnsAppIDSuffix
 }
 
 apnsBundleInfo EXTENSION-CLASS ::= {
@@ -62,7 +62,7 @@ apnsTopics EXTENSION-CLASS ::= {
 
 ApnsDevelopment     ::= NULL
 ApnsProduction      ::= NULL
-ApnsBundleID        ::= UTF8String
+ApnsAppIDSuffix     ::= UTF8String
 ApnsBundleInfo      ::= UTF8String
 
 ApnsTopics          ::= SEQUENCE SIZE(1..MAX) OF ApnsTopic

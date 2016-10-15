@@ -13,7 +13,7 @@
  ber,der,noobj,
  {outdir,"src"},
  {i,"."},
- {i,"/home/efine/work/sc/apns_erl_util/asn1"}]}]).
+ {i,"/home/efine/work/sc/open_source/scpf/apns_erl_util/asn1"}]}]).
 
 -export([encoding_rule/0,bit_string_format/0,
          legacy_erlang_types/0]).
@@ -22,7 +22,7 @@
 'enc_ApplePushExtension'/2,
 'enc_ApnsDevelopment'/2,
 'enc_ApnsProduction'/2,
-'enc_ApnsBundleID'/2,
+'enc_ApnsAppIDSuffix'/2,
 'enc_ApnsBundleInfo'/2,
 'enc_ApnsTopics'/2,
 'enc_ApnsTopic'/2,
@@ -45,7 +45,7 @@
 'dec_ApplePushExtension'/2,
 'dec_ApnsDevelopment'/2,
 'dec_ApnsProduction'/2,
-'dec_ApnsBundleID'/2,
+'dec_ApnsAppIDSuffix'/2,
 'dec_ApnsBundleInfo'/2,
 'dec_ApnsTopics'/2,
 'dec_ApnsTopic'/2,
@@ -68,7 +68,7 @@
 'push-certs'/0,
 'id-apns-development'/0,
 'id-apns-production'/0,
-'id-apns-bundle-id'/0,
+'id-apns-app-id-suffix'/0,
 'id-apns-bundle-info'/0,
 'id-apns-topics'/0
 ]).
@@ -76,7 +76,7 @@
 -export([
 'enc_apnsDevelopment'/3,
 'enc_apnsProduction'/3,
-'enc_apnsBundleID'/3,
+'enc_apnsAppIDSuffix'/3,
 'enc_apnsBundleInfo'/3,
 'enc_apnsTopics'/3
 ]).
@@ -84,7 +84,7 @@
 -export([
 'dec_apnsDevelopment'/3,
 'dec_apnsProduction'/3,
-'dec_apnsBundleID'/3,
+'dec_apnsAppIDSuffix'/3,
 'dec_apnsBundleInfo'/3,
 'dec_apnsTopics'/3
 ]).
@@ -139,7 +139,7 @@ end.
 encode_disp('ApplePushExtension',Data) -> 'enc_ApplePushExtension'(Data);
 encode_disp('ApnsDevelopment',Data) -> 'enc_ApnsDevelopment'(Data);
 encode_disp('ApnsProduction',Data) -> 'enc_ApnsProduction'(Data);
-encode_disp('ApnsBundleID',Data) -> 'enc_ApnsBundleID'(Data);
+encode_disp('ApnsAppIDSuffix',Data) -> 'enc_ApnsAppIDSuffix'(Data);
 encode_disp('ApnsBundleInfo',Data) -> 'enc_ApnsBundleInfo'(Data);
 encode_disp('ApnsTopics',Data) -> 'enc_ApnsTopics'(Data);
 encode_disp('ApnsTopic',Data) -> 'enc_ApnsTopic'(Data);
@@ -162,7 +162,7 @@ encode_disp(Type,_Data) -> exit({error,{asn1,{undefined_type,Type}}}).
 decode_disp('ApplePushExtension',Data) -> 'dec_ApplePushExtension'(Data);
 decode_disp('ApnsDevelopment',Data) -> 'dec_ApnsDevelopment'(Data);
 decode_disp('ApnsProduction',Data) -> 'dec_ApnsProduction'(Data);
-decode_disp('ApnsBundleID',Data) -> 'dec_ApnsBundleID'(Data);
+decode_disp('ApnsAppIDSuffix',Data) -> 'dec_ApnsAppIDSuffix'(Data);
 decode_disp('ApnsBundleInfo',Data) -> 'dec_ApnsBundleInfo'(Data);
 decode_disp('ApnsTopics',Data) -> 'dec_ApnsTopics'(Data);
 decode_disp('ApnsTopic',Data) -> 'dec_ApnsTopic'(Data);
@@ -321,19 +321,19 @@ decode_null(Tlv, TagIn).
 
 
 %%================================
-%%  ApnsBundleID
+%%  ApnsAppIDSuffix
 %%================================
-'enc_ApnsBundleID'(Val) ->
-    'enc_ApnsBundleID'(Val, [<<12>>]).
+'enc_ApnsAppIDSuffix'(Val) ->
+    'enc_ApnsAppIDSuffix'(Val, [<<12>>]).
 
-'enc_ApnsBundleID'(Val, TagIn) ->
+'enc_ApnsAppIDSuffix'(Val, TagIn) ->
 encode_UTF8_string(Val, TagIn).
 
 
-'dec_ApnsBundleID'(Tlv) ->
-   'dec_ApnsBundleID'(Tlv, [12]).
+'dec_ApnsAppIDSuffix'(Tlv) ->
+   'dec_ApnsAppIDSuffix'(Tlv, [12]).
 
-'dec_ApnsBundleID'(Tlv, TagIn) ->
+'dec_ApnsAppIDSuffix'(Tlv, TagIn) ->
 decode_UTF8_string(Tlv, TagIn).
 
 
@@ -704,7 +704,7 @@ decode_BMP_string(Tlv, TagIn).
 'id-apns-production'() ->
 {1,2,840,113635,100,6,3,2}.
 
-'id-apns-bundle-id'() ->
+'id-apns-app-id-suffix'() ->
 {1,2,840,113635,100,6,3,3}.
 
 'id-apns-bundle-info'() ->
@@ -750,15 +750,15 @@ tlv_format(Bytes) ->
 
 
 %%================================
-%%  apnsBundleID
+%%  apnsAppIDSuffix
 %%================================
-'enc_apnsBundleID'('Type', Val, _RestPrimFieldName) ->
-   'enc_ApnsBundleID'(Val, [<<12>>]).
+'enc_apnsAppIDSuffix'('Type', Val, _RestPrimFieldName) ->
+   'enc_ApnsAppIDSuffix'(Val, [<<12>>]).
 
 
-'dec_apnsBundleID'('Type', Bytes,_) ->
+'dec_apnsAppIDSuffix'('Type', Bytes,_) ->
   Tlv = tlv_format(Bytes),
-   'dec_ApnsBundleID'(Tlv, [12]).
+   'dec_ApnsAppIDSuffix'(Tlv, [12]).
 
 
 
@@ -799,7 +799,7 @@ tlv_format(Bytes) ->
 'getenc_SupportedExtensions'({1,2,840,113635,100,6,3,2}) ->
     fun 'enc_apnsProduction'/3;
 'getenc_SupportedExtensions'({1,2,840,113635,100,6,3,3}) ->
-    fun 'enc_apnsBundleID'/3;
+    fun 'enc_apnsAppIDSuffix'/3;
 'getenc_SupportedExtensions'({1,2,840,113635,100,6,3,4}) ->
     fun 'enc_apnsBundleInfo'/3;
 'getenc_SupportedExtensions'({1,2,840,113635,100,6,3,6}) ->
@@ -812,7 +812,7 @@ tlv_format(Bytes) ->
 'getdec_SupportedExtensions'({1,2,840,113635,100,6,3,2}) ->
     fun 'dec_apnsProduction'/3;
 'getdec_SupportedExtensions'({1,2,840,113635,100,6,3,3}) ->
-    fun 'dec_apnsBundleID'/3;
+    fun 'dec_apnsAppIDSuffix'/3;
 'getdec_SupportedExtensions'({1,2,840,113635,100,6,3,4}) ->
     fun 'dec_apnsBundleInfo'/3;
 'getdec_SupportedExtensions'({1,2,840,113635,100,6,3,6}) ->

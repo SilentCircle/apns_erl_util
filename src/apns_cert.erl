@@ -19,8 +19,8 @@
 %%% @copyright 2015-2016 Silent Circle
 %%% @doc APNS certificate utilities.
 %%% This module provides functions to decode and
-%%% validate APNS PEM and DER format certificates, given a Bundle Seed ID
-%%% and the Bundle ID.
+%%% validate APNS PEM and DER format certificates, given a Team ID
+%%% and the AppID Suffix (e.g. com.example.FakeApp).
 %%% See [https://developer.apple.com] for more information.
 %%% @end
 %%%-------------------------------------------------------------------
@@ -32,7 +32,6 @@
 -export([
            decode_cert/1
          , der_decode_cert/1
-         , get_cert_info/1
          , get_cert_info_map/1
          , pem_decode_certs/1
          , validate/3
@@ -66,12 +65,9 @@
        ).
 
 -define(WWDR_NAME,
-    <<"Apple Worldwide Developer Relations Certification Authority">>).
+        <<"Apple Worldwide Developer Relations Certification Authority">>).
 
 -define(is_digit(X), ($0 =< X andalso X =< $9)).
-
--define(bit7_clear(N), (N band 16#80 =:= 0)).
--define(bit7_set(N), (not ?bit7_clear(N))).
 
 %%-------------------------------------------------------------------
 %% Types
@@ -81,7 +77,6 @@
     {teletexString, bin_or_string()} | {printableString, bin_or_string()} |
     {universalString, bin_or_string()} | {utf8String, bin_or_string()} |
     {bmpString, bin_or_string()}.
--type cert_info() :: term().
 
 %%%====================================================================
 %%% API
@@ -130,22 +125,21 @@ der_decode_cert(<<DerData/binary>>) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec get_cert_info(OTPCert) -> CertInfo when
-      OTPCert :: #'OTPCertificate'{}, CertInfo :: cert_info().
+      OTPCert :: #'OTPCertificate'{},
+      CertInfo :: {{app_id_suffix, binary()},
+                   {team_id, binary()},
+                   {issuer_cn, binary()}}.
 get_cert_info(#'OTPCertificate'{} = OTPCert) ->
-    #{subject_uid   := SubjectUID,
-      subject_cn    := SubjectCN,
-      issuer_cn     := IssuerCN,
-      is_production := IsProd} = get_cert_info_map(OTPCert),
+    #{subject_cn    := SubjectCN,
+      subject_ou    := SubjectOU,
+      issuer_cn     := IssuerCN} = get_cert_info_map(OTPCert),
 
-    {ok, BundleInfo} = extract_bundle_info(SubjectCN),
+    {ok, AppIdSuffix} = extract_app_id_suffix(SubjectCN),
 
-    apns_recs:'#new-cert_info'([
-                                {issuer_cn, IssuerCN},
-                                {bundle_id, SubjectUID},
-                                {bundle_seed_id, BundleInfo},
-                                {is_production, IsProd =:= true}
-                               ]
-                              ).
+    {{app_id_suffix, AppIdSuffix},
+     {team_id, SubjectOU},
+     {issuer_cn, IssuerCN}}.
+
 
 %%--------------------------------------------------------------------
 %% @doc Extract more interesting APNS-related info from cert and
@@ -183,11 +177,11 @@ get_cert_info_map(#'OTPCertificate'{tbsCertificate = R}) ->
 
     %% Extensions
     ExtAttrs = [
-                {?'id-apns-development', is_development},
-                {?'id-apns-production',  is_production},
-                {?'id-apns-bundle-id',   bundle_id},
-                {?'id-apns-bundle-info', bundle_info},
-                {?'id-apns-topics',      topics}
+                {?'id-apns-development',   is_development},
+                {?'id-apns-production',    is_production},
+                {?'id-apns-app-id-suffix', app_id_suffix},
+                {?'id-apns-bundle-info',   bundle_info},
+                {?'id-apns-topics',        topics}
                ],
     Extensions = R#'OTPTBSCertificate'.extensions,
 
@@ -229,24 +223,34 @@ pem_decode_certs(<<PemData/binary>>) ->
     ].
 
 %%--------------------------------------------------------------------
-%% @doc Validate that the `BundleSeedID' and `BundleID' correspond to the
+%% @doc Validate that the `TeamId' and `AppIdSuffix' correspond to the
 %% certificate data `CertData'. `CertData' may be either PEM-encoded or
-%% DER-encoded. If PEM-encoded, only one certificate is permitted in
-%% the data.
+%% DER-encoded. If PEM-encoded, only one certificate is permitted in the data.
+%%
 %% === Cert Data ===
+%%
 %% Depending on whether or not the certificate is PEM or DER
 %% encoded, you could load it as follows:
+%%
 %% ```
 %% {ok, PemData} = file:read_file("cert.pem").
 %% {ok, DerData} = file:read_file("aps_developer.cer").
 %% '''
-%% === Bundle Seed ID ===
 %%
-%% The bundle seed ID will be either in the form `^.{10}:.{10}$',
-%% such as `ABCDE12345:FGHIJ67890', or
-%% a bundle ID string such as `com.example.MyApp'. The caller is
-%% expected to supply the right bundle seed ID format or the validation
-%% will fail.
+%% === Team ID ===
+%%
+%% The team ID will be a 10-character binary string, such as
+%% `<<"ABCDE12345">>'. This is obtained from the certificate's Subject OU
+%% field.
+%%
+%% === AppID Suffix ===
+%%
+%% The AppID Suffix will be a binary string such as `<<"com.example.MyApp">>'.
+%% This is obtained from the certificate's Subject CN field.
+%% The caller is expected to supply the right AppID Suffix or the
+%% validation will fail.
+%%
+%% === Issuer CN ===
 %%
 %% The Issuer CN is expected to be
 %% `Apple Worldwide Developer Relations Certification Authority'
@@ -254,22 +258,19 @@ pem_decode_certs(<<PemData/binary>>) ->
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec validate(CertData::binary(), BundleSeedID::binary(), BundleID::binary()) ->
-    ok | {ErrorClass::atom(), Reason::term()}.
-validate(<<CertData/binary>>, <<BundleSeedID/binary>>, <<BundleID/binary>>) ->
-    IssuerCN = ?WWDR_NAME,
-    CertInfo = get_cert_info(decode_cert(CertData)),
-    true = apns_recs:'#is_record-'(cert_info, CertInfo),
-    case {get_bundle_seed_id(CertInfo), get_bundle_id(CertInfo),
-          get_issuer_cn(CertInfo)} of
-        {BundleSeedID, BundleID, IssuerCN} ->
+-spec validate(CertData, AppIdSuffix, TeamID) -> Result when
+      CertData :: binary(), AppIdSuffix :: binary(), TeamID :: binary(),
+      Result :: ok | {error, Reason}, Reason :: term().
+validate(<<CertData/binary>>, <<AppIdSuffix/binary>>, <<TeamID/binary>>) ->
+    ConfigData = {{app_id_suffix, AppIdSuffix},
+                  {team_id, TeamID},
+                  {issuer_cn, ?WWDR_NAME}},
+    case get_cert_info(decode_cert(CertData)) of
+        ConfigData ->
             ok;
-        _ ->
-            {error, {mismatched_cert,
-                     [{expected, [BundleSeedID, BundleID, IssuerCN]},
-                      {actual, CertInfo}]
-                    }
-            }
+        CertInfo ->
+            {error, {mismatched_cert, [{cert_info, CertInfo},
+                                       {config_data, ConfigData}]}}
     end.
 
 %%%====================================================================
@@ -278,21 +279,21 @@ validate(<<CertData/binary>>, <<BundleSeedID/binary>>, <<BundleID/binary>>) ->
 
 %%--------------------------------------------------------------------
 %% @private
-%% @doc Extract bundle info and production/development status.
+%% @doc Extract AppID suffix from the CN attr.
 %% @end
 %%--------------------------------------------------------------------
--spec extract_bundle_info(CN) -> Result when
-      CN :: binary(), Result :: {ok, BundleInfo} | {error, Reason},
-      BundleInfo :: binary(), Reason :: term().
-extract_bundle_info(CN) ->
+-spec extract_app_id_suffix(CN) -> Result when
+      CN :: binary(), Result :: {ok, AppIdSuffix} | {error, Reason},
+      AppIdSuffix :: binary(), Reason :: term().
+extract_app_id_suffix(CN) ->
     {ok, Str} = unicode_to_list(CN),
     {ok, RE} = re:compile(?APP_ID_RE),
     {namelist, [_|_] = NL} = re:inspect(RE, namelist),
     case re:run(Str, RE, [{capture, all_names, binary}]) of
         {match, Matches} ->
             MatchProps = lists:zip(NL, Matches),
-            BundleInfo = proplists:get_value(<<"app_id">>, MatchProps),
-            {ok, BundleInfo};
+            AppIdSuffix = proplists:get_value(<<"app_id">>, MatchProps),
+            {ok, AppIdSuffix};
         nomatch ->
             {error, {not_an_apns_cert, Str}}
     end.
@@ -320,25 +321,6 @@ maybe_decode_val(_Type, S) when is_list(S) ->
     S;
 maybe_decode_val(_Type, _Unknown) ->
     undefined.
-
--compile({inline, [{get_bundle_seed_id, 1},
-                   {get_bundle_id, 1},
-                   {get_issuer_cn, 1}]}).
-
-%%--------------------------------------------------------------------
-%% @private
-get_bundle_seed_id(CertInfo) ->
-    apns_recs:'#get-cert_info'(bundle_seed_id, CertInfo).
-
-%%--------------------------------------------------------------------
-%% @private
-get_bundle_id(CertInfo) ->
-    apns_recs:'#get-cert_info'(bundle_id, CertInfo).
-
-%%--------------------------------------------------------------------
-%% @private
-get_issuer_cn(CertInfo) ->
-    apns_recs:'#get-cert_info'(issuer_cn, CertInfo).
 
 %%--------------------------------------------------------------------
 %% @private
