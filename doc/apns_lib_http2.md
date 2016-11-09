@@ -108,7 +108,7 @@ parsed_rsp() = [<a href="#type-parsed_rsp_val">parsed_rsp_val()</a>]
 
 
 <pre><code>
-parsed_rsp_val() = {id, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a href="#type-bstring">bstring()</a>} | {status_desc, <a href="#type-bstring">bstring()</a>} | {reason, <a href="#type-bstring">bstring()</a>} | {reason_desc, <a href="#type-bstring">bstring()</a>} | {timestamp, non_neg_integer() | undefined} | {timestamp_desc, <a href="#type-bstring">bstring()</a> | undefined} | {body, term()}
+parsed_rsp_val() = {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a href="#type-bstring">bstring()</a>} | {status_desc, <a href="#type-bstring">bstring()</a>} | {reason, <a href="#type-bstring">bstring()</a>} | {reason_desc, <a href="#type-bstring">bstring()</a>} | {timestamp, non_neg_integer() | undefined} | {timestamp_desc, <a href="#type-bstring">bstring()</a> | undefined} | {body, term()}
 </code></pre>
 
 
@@ -118,7 +118,7 @@ parsed_rsp_val() = {id, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a h
 
 
 <pre><code>
-req_opt() = {id, <a href="#type-uuid_str">uuid_str()</a>} | {topic, <a href="#type-bstring">bstring()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()}
+req_opt() = {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {topic, <a href="#type-bstring">bstring()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()}
 </code></pre>
 
 
@@ -206,7 +206,7 @@ Create an HTTP/2 request ready to send.
 
 <dd>A proplist containing one or more of the following:
 <ul>
-<li><code>{id, uuid_str()}</code>: A canonical UUID that identifies the
+<li><code>{uuid, uuid_str()}</code>: A canonical UUID that identifies the
 notification. If there is an error sending the notification, APNs
 uses this value to identify the notification to your server.  The
 canonical form is 32 lowercase hexadecimal digits, displayed in five
@@ -317,7 +317,7 @@ parse_resp(Resp) -&gt; Result
 <ul class="definitions"><li><code>Resp = <a href="#type-http2_rsp">http2_rsp()</a></code></li><li><code>Result = <a href="#type-parsed_rsp">parsed_rsp()</a></code></li></ul>
 
 Parse HTTP/2 response body and headers.
-Return proplist with parsed body, id, status, and other information.
+Return proplist with parsed body, uuid, status, and other information.
 
 <a name="parse_resp_body-1"></a>
 

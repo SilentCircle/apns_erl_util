@@ -63,7 +63,7 @@
 -type http2_rsp_body() :: undefined | [bstring()].
 -type http2_rsp()      :: {http2_hdrs(), http2_rsp_body()}.
 -type uuid_str()       :: bstring().
--type parsed_rsp_val() :: {id, uuid_str()}
+-type parsed_rsp_val() :: {uuid, uuid_str()}
                         | {status, bstring()}
                         | {status_desc, bstring()}
                         | {reason, bstring()}
@@ -73,7 +73,7 @@
                         | {body, term()}.
 
 -type parsed_rsp()     :: [parsed_rsp_val()].
--type req_opt()        :: {id, uuid_str()}
+-type req_opt()        :: {uuid, uuid_str()}
                         | {topic, bstring()}
                         | {expiration, non_neg_integer()}
                         | {priority, non_neg_integer()}.
@@ -95,7 +95,7 @@
 %% <dt>`Opts'</dt>
 %%    <dd>A proplist containing one or more of the following:
 %%      <ul>
-%%        <li>`{id, uuid_str()}': A canonical UUID that identifies the
+%%        <li>`{uuid, uuid_str()}': A canonical UUID that identifies the
 %%        notification. If there is an error sending the notification, APNs
 %%        uses this value to identify the notification to your server.  The
 %%        canonical form is 32 lowercase hexadecimal digits, displayed in five
@@ -187,7 +187,7 @@ make_uuid() ->
 
 %%--------------------------------------------------------------------
 %% @doc Parse HTTP/2 response body and headers.
-%% Return proplist with parsed body, id, status, and other information.
+%% Return proplist with parsed body, uuid, status, and other information.
 %% @end
 %%--------------------------------------------------------------------
 -spec parse_resp(Resp) -> Result
@@ -211,7 +211,7 @@ parse_resp({RespHdrs, RespBody}) ->
                         {body, EJSON}]
                end,
 
-    [{id, Id}, {status, S}, {status_desc, SD} | OptProps].
+    [{uuid, Id}, {status, S}, {status_desc, SD} | OptProps].
 
 %%--------------------------------------------------------------------
 %% @doc Parse APNS HTTP/2 response body.
@@ -364,7 +364,7 @@ host_port(dev)  -> {"api.development.push.apple.com", 443}.
     when Opts :: req_opts(), Headers :: http2_hdrs().
 apns_opts(Opts) ->
     lists:foldl(
-      fun({id, V}, Acc)         -> [{<<"apns-id">>, b(V)} | Acc];
+      fun({uuid, V}, Acc)       -> [{<<"apns-id">>, b(V)} | Acc];
          ({topic, V}, Acc)      -> [{<<"apns-topic">>, b(V)} | Acc];
          ({expiration, V}, Acc) -> [{<<"apns-expiration">>, b(V)} | Acc];
          ({priority, V}, Acc)   -> [{<<"apns-priority">>, b(V)} | Acc];
