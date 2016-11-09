@@ -67,7 +67,7 @@
 -type http2_rsp_body()    :: undefined | [bstring()].
 -type http2_rsp()         :: {http2_hdrs(), http2_rsp_body()}.
 -type uuid_str()          :: bstring().
--type parsed_rsp_val()    :: {id, uuid_str()}
+-type parsed_rsp_val()    :: {uuid, uuid_str()}
                            | {status, bstring()}
                            | {status_desc, bstring()}
                            | {reason, bstring()}
@@ -78,7 +78,7 @@
 
 -type parsed_rsp()        :: [parsed_rsp_val()].
 -type req_opt()           :: {authorization, jwt()}
-                           | {id, uuid_str()}
+                           | {uuid, uuid_str()}
                            | {expiration, non_neg_integer()}
                            | {priority, non_neg_integer()}
                            | {topic, bstring()}
@@ -114,13 +114,13 @@
 %%           used to establish a connection, this request header is
 %%           ignored.</dd>
 %%
-%%        <dt>`{id, uuid_str()}'</dt>
+%%        <dt>`{uuid, uuid_str()}'</dt>
 %%           <dd>A canonical UUID that identifies the notification. If there is
 %%           an error sending the notification, APNs uses this value to
 %%           identify the notification to your server.  The canonical form is
-%%           32 lowercase hexadecimal digits, displayed in five groups
-%%           separated by hyphens in the form 8-4-4-4-12. An example UUID is as
-%%           follows: `123e4567-e89b-12d3-a456-42665544000'. If you omit this
+%%           <b>32 lowercase hexadecimal digits, displayed in five groups
+%%           separated by hyphens in the form 8-4-4-4-12</b>.  An example UUID
+%%           is `123e4567-e89b-12d3-a456-42665544000'.  If you omit this
 %%           header, a new UUID is created by APNs and returned in the
 %%           response.</dd>
 %%
@@ -229,7 +229,7 @@ make_uuid() ->
 
 %%--------------------------------------------------------------------
 %% @doc Parse HTTP/2 response body and headers.
-%% Return proplist with parsed body, id, status, and other information.
+%% Return proplist with parsed body, uuid, status, and other information.
 %% @end
 %%--------------------------------------------------------------------
 -spec parse_resp(Resp) -> Result
@@ -253,7 +253,7 @@ parse_resp({RespHdrs, RespBody}) ->
                         {body, EJSON}]
                end,
 
-    [{id, Id}, {status, S}, {status_desc, SD} | OptProps].
+    [{uuid, Id}, {status, S}, {status_desc, SD} | OptProps].
 
 %%--------------------------------------------------------------------
 %% @doc Parse APNS HTTP/2 response body.
@@ -401,7 +401,7 @@ apns_opts(Opts) ->
     lists:foldl(
       fun
           ({authorization, V}, Acc) -> [{<<"authorization">>, bearer(V)} | Acc];
-          ({id, V}, Acc)            -> [{<<"apns-id">>, b(V)} | Acc];
+          ({uuid, V}, Acc)          -> [{<<"apns-id">>, b(V)} | Acc];
           ({expiration, V}, Acc)    -> [{<<"apns-expiration">>, b(V)} | Acc];
           ({priority, V}, Acc)      -> [{<<"apns-priority">>, b(V)} | Acc];
           ({topic, V}, Acc)         -> [{<<"apns-topic">>, b(V)} | Acc];

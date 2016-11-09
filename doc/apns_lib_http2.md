@@ -128,7 +128,7 @@ parsed_rsp() = [<a href="#type-parsed_rsp_val">parsed_rsp_val()</a>]
 
 
 <pre><code>
-parsed_rsp_val() = {id, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a href="#type-bstring">bstring()</a>} | {status_desc, <a href="#type-bstring">bstring()</a>} | {reason, <a href="#type-bstring">bstring()</a>} | {reason_desc, <a href="#type-bstring">bstring()</a>} | {timestamp, non_neg_integer() | undefined} | {timestamp_desc, <a href="#type-bstring">bstring()</a> | undefined} | {body, term()}
+parsed_rsp_val() = {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a href="#type-bstring">bstring()</a>} | {status_desc, <a href="#type-bstring">bstring()</a>} | {reason, <a href="#type-bstring">bstring()</a>} | {reason_desc, <a href="#type-bstring">bstring()</a>} | {timestamp, non_neg_integer() | undefined} | {timestamp_desc, <a href="#type-bstring">bstring()</a> | undefined} | {body, term()}
 </code></pre>
 
 
@@ -138,7 +138,7 @@ parsed_rsp_val() = {id, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a h
 
 
 <pre><code>
-req_opt() = {authorization, <a href="#type-jwt">jwt()</a>} | {id, <a href="#type-uuid_str">uuid_str()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()} | {topic, <a href="#type-bstring">bstring()</a>} | {collapse_id, <a href="#type-bstring">bstring()</a>} | {thread_id, <a href="#type-bstring">bstring()</a>}
+req_opt() = {authorization, <a href="#type-jwt">jwt()</a>} | {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()} | {topic, <a href="#type-bstring">bstring()</a>} | {collapse_id, <a href="#type-bstring">bstring()</a>} | {thread_id, <a href="#type-bstring">bstring()</a>}
 </code></pre>
 
 
@@ -232,13 +232,13 @@ Create an HTTP/2 request ready to send.
 notifications for the specified topics. The token is in
 Base64URL-encoded JWT format.  When the provider certificate is
 used to establish a connection, this request header is
-ignored.</dd><p></p><dt><code>{id, uuid_str()}</code></dt>
+ignored.</dd><p></p><dt><code>{uuid, uuid_str()}</code></dt>
 <dd>A canonical UUID that identifies the notification. If there is
 an error sending the notification, APNs uses this value to
 identify the notification to your server.  The canonical form is
-32 lowercase hexadecimal digits, displayed in five groups
-separated by hyphens in the form 8-4-4-4-12. An example UUID is as
-follows: <code>123e4567-e89b-12d3-a456-42665544000</code>. If you omit this
+<b>32 lowercase hexadecimal digits, displayed in five groups
+separated by hyphens in the form 8-4-4-4-12</b>.  An example UUID
+is <code>123e4567-e89b-12d3-a456-42665544000</code>.  If you omit this
 header, a new UUID is created by APNs and returned in the
 response.</dd><p></p><dt><code>{expiration, non_neg_integer()}</code></dt>
 <dd>A UNIX epoch date expressed in seconds (UTC). This header
@@ -358,7 +358,7 @@ parse_resp(Resp) -&gt; Result
 <ul class="definitions"><li><code>Resp = <a href="#type-http2_rsp">http2_rsp()</a></code></li><li><code>Result = <a href="#type-parsed_rsp">parsed_rsp()</a></code></li></ul>
 
 Parse HTTP/2 response body and headers.
-Return proplist with parsed body, id, status, and other information.
+Return proplist with parsed body, uuid, status, and other information.
 
 <a name="parse_resp_body-1"></a>
 
