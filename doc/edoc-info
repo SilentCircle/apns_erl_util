@@ -1,3 +1,4 @@
 %% encoding: UTF-8
 {application,apns_erl_util}.
-{modules,[apns_cert,apns_json,apns_lib,apns_lib_http2,apns_recs,apns_types]}.
+{modules,[apns_cert,apns_json,apns_jwt,apns_lib,apns_lib_http2,apns_recs,
+          apns_types]}.
