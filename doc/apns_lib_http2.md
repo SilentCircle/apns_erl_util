@@ -138,11 +138,7 @@ parsed_rsp_val() = {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {status, <a
 
 
 <pre><code>
-<<<<<<< HEAD
-req_opt() = {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {topic, <a href="#type-bstring">bstring()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()}
-=======
 req_opt() = {authorization, <a href="#type-jwt">jwt()</a>} | {uuid, <a href="#type-uuid_str">uuid_str()</a>} | {expiration, non_neg_integer()} | {priority, non_neg_integer()} | {topic, <a href="#type-bstring">bstring()</a>} | {collapse_id, <a href="#type-bstring">bstring()</a>} | {thread_id, <a href="#type-bstring">bstring()</a>}
->>>>>>> feature/add-jwt
 </code></pre>
 
 
@@ -256,43 +252,6 @@ attempt to redeliver it.</dd><p></p><dt><code>{priority, non_neg_integer()}</cod
 <dd>The priority of the notification.  Specify one of the following
 values:
 <ul>
-<<<<<<< HEAD
-<li><code>{uuid, uuid_str()}</code>: A canonical UUID that identifies the
-notification. If there is an error sending the notification, APNs
-uses this value to identify the notification to your server.  The
-canonical form is 32 lowercase hexadecimal digits, displayed in five
-groups separated by hyphens in the form 8-4-4-4-12. An example UUID
-is as follows: <code>123e4567-e89b-12d3-a456-42665544000</code>. If you omit
-this header, a new UUID is created by APNs and returned in the
-response.</li><p></p><li><code>{topic, string | bstring()}</code>: The topic of the remote
-notification, which is typically the bundle ID for your app. The
-certificate you create in Member Center must include the capability
-for this topic.  If your certificate includes multiple topics, you
-must specify a value for this header.  If you omit this header and
-your APNs certificate does not specify multiple topics, the APNs
-server uses the certificate’s Subject as the default topic.</li><p></p><li><code>{priority, non_neg_integer()}</code>: The priority of the notification.
-Specify one of the following values:
-<ul>
-<li><code>10</code>–Send the push message immediately. Notifications with this
-priority must trigger an alert, sound, or badge on the target
-device. It is an error to use this priority for a push notification
-that contains only the content-available key.</li>
-<li><code>5</code>—Send the push message at a time that takes into account
-power considerations for the device. Notifications with this
-priority might be grouped and delivered in bursts. They are
-throttled, and in some cases are not delivered.  If you omit this
-header, the APNs server sets the priority to <code>10</code>.</li>
-</ul>
-</li>
-<li><code>{expiration, non_neg_integer()}</code>: A UNIX epoch date expressed in
-seconds (UTC). This header identifies the date when the notification is
-no longer valid and can be discarded.  If this value is nonzero, APNs
-stores the notification and tries to deliver it at least once,
-repeating the attempt as needed if it is unable to deliver the
-notification the first time. If the value is <code>0</code>, APNs treats the
-notification as if it expires immediately and does not store the
-notification or attempt to redeliver it.</li>
-=======
 <li><code>10</code>–Send the push message immediately. Notifications with
 this priority must trigger an alert, sound, or badge on the
 target device. It is an error to use this priority for a push
@@ -303,7 +262,6 @@ with this priority might be grouped and delivered in bursts.
 They are throttled, and in some cases are not delivered.  If
 you omit this header, the APNs server sets the priority to
 <code>10</code>.</li>
->>>>>>> feature/add-jwt
 </ul>
 </dd><p></p><dt><code>{topic, string() | bstring()}</code></dt>
 <dd>The topic of the remote notification, which is typically the
