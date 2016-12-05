@@ -25,11 +25,11 @@ See `rebar.config.script` for usage and behavior.
 
 
 <table width="100%" border="0" summary="list of modules">
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_cert.md" class="module">apns_cert</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_json.md" class="module">apns_json</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_jwt.md" class="module">apns_jwt</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_lib.md" class="module">apns_lib</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_lib_http2.md" class="module">apns_lib_http2</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_recs.md" class="module">apns_recs</a></td></tr>
-<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/master/doc/apns_types.md" class="module">apns_types</a></td></tr></table>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_cert.md" class="module">apns_cert</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_json.md" class="module">apns_json</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_jwt.md" class="module">apns_jwt</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_lib.md" class="module">apns_lib</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_lib_http2.md" class="module">apns_lib_http2</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_recs.md" class="module">apns_recs</a></td></tr>
+<tr><td><a href="http://github.com/SilentCircle/apns_erl_util/blob/feature/add-jwt/doc/apns_types.md" class="module">apns_types</a></td></tr></table>
 
