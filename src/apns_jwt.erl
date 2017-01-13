@@ -44,6 +44,7 @@
               jws_signature/0,
               jws_signing_input/0,
               jwt/0,
+              key/0,
               kid/0,
               pem_encoded_key/0,
               posix_time/0
@@ -65,6 +66,7 @@
 -type iat() :: posix_time().
 -type iss() :: bstring().
 -type kid() :: bstring().
+-type key() :: term().
 -type jose_header() :: json().
 -type jws_payload() :: json().
 -type jws_signature() :: base64_urlencoded().
@@ -80,6 +82,7 @@
          hdr}).
 
 -opaque context() :: binary().
+-type apns_jwt_ctx() :: #apns_jwt_ctx{}.
 
 %%%====================================================================
 %%% API
@@ -149,18 +152,24 @@ new(KID, Issuer, SigningKeyPem) ->
                                   hdr = signing_header(KID)}).
 
 %%-------------------------------------------------------------------
+-spec kid(Context) -> KID when
+      Context :: context() | apns_jwt_ctx(), KID :: kid().
 kid(<<Context/binary>>) ->
     kid(ctx_to_internal(Context));
 kid(#apns_jwt_ctx{kid=KID}) ->
     KID.
 
 %%-------------------------------------------------------------------
+-spec iss(Context) -> Iss when
+      Context :: context() | apns_jwt_ctx(), Iss :: iss().
 iss(<<Context/binary>>) ->
     iss(ctx_to_internal(Context));
 iss(#apns_jwt_ctx{iss=Iss}) ->
     Iss.
 
 %%-------------------------------------------------------------------
+-spec key(Context) -> Key when
+      Context :: context() | apns_jwt_ctx(), Key :: key().
 key(<<Context/binary>>) ->
     key(ctx_to_internal(Context));
 key(#apns_jwt_ctx{key=Key}) ->
