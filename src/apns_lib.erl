@@ -141,7 +141,11 @@ encode_v2(Id, Expiry, <<Token/binary>>, <<Payload/binary>>,
        {?ID_PRIORITY, Prio}
       ]
      );
-encode_v2(Id, Expiry, Token, Payload, Prio) ->
+encode_v2(Id, Expiry, Token, Payload, Prio) when is_integer(Id) andalso
+                                                 is_integer(Expiry) andalso
+                                                 is_integer(Prio) andalso
+                                                 0 =< Prio andalso
+                                                 Prio =< 255 ->
     encode_v2(Id, Expiry, sc_util:to_bin(Token),
               sc_util:to_bin(Payload), Prio).
 
