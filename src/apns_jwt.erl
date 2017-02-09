@@ -23,12 +23,19 @@
 -module(apns_jwt).
 
 -export([
+         base64urldecode/1,
+         base64urlencode/1,
+         generate_private_key/0,
          jwt/1,
          jwt/3,
          iss/1,
          key/1,
          kid/1,
-         new/3
+         named_curve/0,
+         new/3,
+         public_key/1,
+         verify/2,
+         verify/4
         ]).
 
 -export_type([
@@ -36,6 +43,7 @@
               base64_urlencoded/0,
               bstring/0,
               context/0,
+              ec_private_key/0,
               iat/0,
               iss/0,
               jose_header/0,
@@ -53,7 +61,12 @@
 -include_lib("public_key/include/public_key.hrl").
 
 -define(JWT_ALG, <<"ES256">>).
+-define(JWT_TYP, <<"JWT">>).
 -define(DIGEST_TYPE, sha256).
+-define(MAX_IAT_AGE_SECS, 60*60). % APNS gives it an hour
+
+-define(IS_SIGNING_KEY(SigningKey),
+        (is_binary(SigningKey) orelse is_record(SigningKey, 'ECPrivateKey'))).
 
 %%%-------------------------------------------------------------------
 %%% Types
@@ -73,6 +86,7 @@
 -type jws_signing_input() :: bstring().
 -type jwt() :: bstring().
 -type pem_encoded_key() :: bstring().
+-type ec_private_key() :: #'ECPrivateKey'{}.
 
 -record(apns_jwt_ctx,
         {kid,
@@ -81,8 +95,10 @@
          key,
          hdr}).
 
--opaque context() :: binary().
 -type apns_jwt_ctx() :: #apns_jwt_ctx{}.
+-type output_context() :: binary().
+-type input_context() :: output_context() | apns_jwt_ctx().
+-opaque context() :: output_context().
 
 %%%====================================================================
 %%% API
@@ -99,29 +115,32 @@
 %%   developer portal.</dt>
 %%   <dd>`Issuer :: binary()'</dd>
 %%   <dt>This is the Apple Team ID from the Apple developer portal.</dt>
-%%   <dd>`SigningKey :: binary()'</dd>
-%%   <dt>This is the PEM-encoded private key downloaded from the Apple
-%%   developer portal.</dt>
+%%   <dd>`SigningKey:: pem_encoded_key() | ec_private_key()'</dd>
+%%   <dt>This is the private key downloaded from the Apple
+%%   developer portal, either PEM-encoded as downloaded, or as
+%%   an #'ECPrivateKey{}' record.</dt>
 %% </dl>
 %% @end
 %%-------------------------------------------------------------------
 -spec jwt(KID, Issuer, SigningKey) -> JWT when
-      KID :: kid(), Issuer :: iss(), SigningKey :: pem_encoded_key(),
+      KID :: kid(), Issuer :: iss(),
+      SigningKey :: pem_encoded_key() | ec_private_key(),
       JWT :: jwt().
-jwt(KID, Issuer, SigningKey) when is_binary(KID),
-                                  is_binary(Issuer),
-                                  is_binary(SigningKey) ->
+jwt(KID, Issuer, SigningKey) when is_binary(KID) andalso
+                                  is_binary(Issuer) andalso
+                                  ?IS_SIGNING_KEY(SigningKey) ->
     jwt(new(KID, Issuer, SigningKey)).
 
 %%--------------------------------------------------------------------
 %% @equiv jwt
 %% @end
 %%-------------------------------------------------------------------
--spec jwt(Context) -> JWT when Context :: context(), JWT :: jwt().
-jwt(Context) ->
-    R = binary_to_term(Context),
-    SigningInput = signing_input(R),
-    Signature = signature(SigningInput, key(R)),
+-spec jwt(Context) -> JWT when Context :: input_context(), JWT :: jwt().
+jwt(<<Context/binary>>) ->
+    jwt(binary_to_term(Context));
+jwt(#apns_jwt_ctx{}=Context) ->
+    SigningInput = signing_input(Context),
+    Signature = signature(SigningInput, key(Context)),
     <<SigningInput/binary, $., Signature/binary>>.
 
 %%--------------------------------------------------------------------
@@ -136,51 +155,128 @@ jwt(Context) ->
 %%   developer portal.</dt>
 %%   <dd>`Issuer :: binary()'</dd>
 %%   <dt>This is the Apple Team ID from the Apple developer portal.</dt>
-%%   <dd>`SigningKey :: binary()'</dd>
+%%   <dd>`SigningKey :: pem_encoded_key()'</dd>
 %%   <dt>This is the PEM-encoded private key downloaded from the Apple
 %%   developer portal.</dt>
 %% </dl>
 %% @end
 %%-------------------------------------------------------------------
--spec new(KID, Issuer, SigningKeyPem) -> Context when
-      KID :: kid(), Issuer :: iss(), SigningKeyPem :: pem_encoded_key(),
+-spec new(KID, Issuer, SigningKey) -> Context when
+      KID :: kid(), Issuer :: iss(),
+      SigningKey :: pem_encoded_key() | ec_private_key(),
       Context :: context().
-new(KID, Issuer, SigningKeyPem) ->
-    internal_to_ctx(#apns_jwt_ctx{kid = KID,
-                                  iss = Issuer,
-                                  key = get_private_key(SigningKeyPem),
-                                  hdr = signing_header(KID)}).
+new(KID, Issuer, SigningKey) when is_binary(KID) andalso
+                                  is_binary(Issuer) andalso
+                                  ?IS_SIGNING_KEY(SigningKey) ->
+    internal_to_ctx(make_internal(KID, Issuer, SigningKey)).
 
 %%-------------------------------------------------------------------
+%% @doc Accessor for kid.
 -spec kid(Context) -> KID when
-      Context :: context() | apns_jwt_ctx(), KID :: kid().
+      Context :: input_context() | apns_jwt_ctx(), KID :: kid().
 kid(<<Context/binary>>) ->
     kid(ctx_to_internal(Context));
 kid(#apns_jwt_ctx{kid=KID}) ->
     KID.
 
 %%-------------------------------------------------------------------
+%% @doc Accessor for iss.
 -spec iss(Context) -> Iss when
-      Context :: context() | apns_jwt_ctx(), Iss :: iss().
+      Context :: input_context() | apns_jwt_ctx(), Iss :: iss().
 iss(<<Context/binary>>) ->
     iss(ctx_to_internal(Context));
 iss(#apns_jwt_ctx{iss=Iss}) ->
     Iss.
 
 %%-------------------------------------------------------------------
+%% @doc Accessor for key.
 -spec key(Context) -> Key when
-      Context :: context() | apns_jwt_ctx(), Key :: key().
+      Context :: input_context() | apns_jwt_ctx(), Key :: key().
 key(<<Context/binary>>) ->
     key(ctx_to_internal(Context));
 key(#apns_jwt_ctx{key=Key}) ->
     Key.
+
+%%--------------------------------------------------------------------
+%% @doc Generate a private key. This is mostly useful for testing.
+-spec generate_private_key() -> ec_private_key().
+generate_private_key() ->
+    public_key:generate_key(named_curve()).
+
+%%--------------------------------------------------------------------
+%% @doc Extract an EC public key from context or private key.
+-spec public_key(Opaque) -> PublicKey when
+      Opaque :: ec_private_key() | input_context(),
+      PublicKey :: {#'ECPoint'{}, {'namedCurve', tuple()}}.
+public_key(#'ECPrivateKey'{publicKey=ECPK}) ->
+    {#'ECPoint'{point=ECPK}, apns_jwt:named_curve()};
+public_key(#apns_jwt_ctx{key=#'ECPrivateKey'{}=Key}) ->
+    public_key(Key);
+public_key(<<Context/binary>>) ->
+    public_key(ctx_to_internal(Context)).
+
+%%-------------------------------------------------------------------
+%% @doc Verify a JWT using a context.
+%% Return `ok' on success, `{error, {jwt_validation_failed, [binary()]}}'
+%% if an error occurred. The list of binaries contains the failed keys of the
+%% JWT.
+-spec verify(JWT, Context) -> Result when
+      JWT :: jwt(), Context :: input_context() | apns_jwt_ctx(),
+      Result :: ok | {error, Reason}, Reason :: term().
+verify(<<JWT/binary>>, <<Context/binary>>) ->
+    verify(JWT, ctx_to_internal(Context));
+verify(<<JWT/binary>>, #apns_jwt_ctx{}=Context) ->
+    [BHdr, BPayload, _BSig] = L = binary:split(JWT, <<$.>>, [global]),
+    [JHdr, JPayload, Sig] = [base64urldecode(B) || B <- L],
+    JwtItemVfn = lists:foldl(fun({K, V}, Acc) ->
+                                     [{K, verify_jwt_item(K, V, Context)}|Acc]
+                             end, [], jsx:decode(JHdr) ++ jsx:decode(JPayload)),
+
+    SigInput = <<BHdr/binary, $., BPayload/binary>>,
+    SigVfn = [{<<"signature">>, verify_signature(Sig, SigInput, Context)}],
+
+    case [K || {K, false} <- JwtItemVfn ++ SigVfn] of
+        [] ->
+            ok; % Yay
+        FailedKeys ->
+            {error, {jwt_validation_failed, FailedKeys}}
+    end.
+
+%%-------------------------------------------------------------------
+%% @doc Verify a JWT using the kid, iss, and signing key.
+%% @see verify/2
+-spec verify(JWT, KID, Iss, SigningKey) -> Result when
+      JWT :: jwt(), KID :: kid(), Iss :: iss(),
+      SigningKey:: pem_encoded_key() | ec_private_key(),
+      Result :: ok | {error, Reason}, Reason :: term().
+verify(JWT, KID, Iss, SigningKey) ->
+    verify(JWT, make_internal(KID, Iss, SigningKey)).
+
+%%--------------------------------------------------------------------
+-spec base64urlencode(Bin) -> Result when
+      Bin :: binary(), Result :: base64_urlencoded().
+base64urlencode(<<Bin/binary>>) ->
+    << << case Byte of $+ -> $-; $/ -> $_; _ -> Byte end >>
+       || <<Byte>> <= base64:encode(Bin), Byte =/= $= >>.
+
+%%--------------------------------------------------------------------
+-spec base64urldecode(B64Urlencoded) -> Result when
+      B64Urlencoded :: base64_urlencoded(), Result :: binary().
+base64urldecode(<<B64Urlencoded/binary>>) ->
+    base64:decode(<< << case Byte of $- -> $+; $_ -> $/; _ -> Byte end >>
+                     || <<Byte>> <= pad(B64Urlencoded) >>).
+
+%%--------------------------------------------------------------------
+-spec named_curve() -> {'namedCurve', OID :: tuple()}.
+named_curve() ->
+    {namedCurve, 'OTP-PUB-KEY':secp256r1()}.
 
 %%%====================================================================
 %%% Internal
 %%%====================================================================
 %%--------------------------------------------------------------------
 -spec signing_input(Context) -> Result when
-      Context :: context(), Result :: jws_signing_input().
+      Context :: apns_jwt_ctx(), Result :: jws_signing_input().
 signing_input(#apns_jwt_ctx{hdr=Hdr, iss=Iss}) ->
     list_to_binary([Hdr, $., base64urlencode(payload(Iss))]).
 
@@ -202,7 +298,7 @@ signature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
 
 %%--------------------------------------------------------------------
 -spec get_private_key(SigningKeyPem) -> PrivateKey when
-      SigningKeyPem :: pem_encoded_key(), PrivateKey :: term().
+      SigningKeyPem :: pem_encoded_key(), PrivateKey :: ec_private_key().
 get_private_key(SigningKeyPem) ->
     [PemEntry] = public_key:pem_decode(SigningKeyPem),
     %% -record('PrivateKeyInfo',{version, privateKeyAlgorithm,
@@ -218,11 +314,20 @@ get_private_key(SigningKeyPem) ->
     ECPrivateKey.
 
 %%--------------------------------------------------------------------
--spec base64urlencode(Bin) -> Result when
-      Bin :: binary(), Result :: base64_urlencoded().
-base64urlencode(<<Bin/binary>>) ->
-    << << case Byte of $+ -> $-; $/ -> $_; _ -> Byte end >>
-       || <<Byte>> <= base64:encode(Bin), Byte =/= $= >>.
+%% @private
+-spec pad(B64) -> PaddedB64 when
+      B64 :: bstring(), PaddedB64 :: bstring().
+pad(<<B64/binary>>) ->
+    case byte_size(B64) rem 4 of
+        0 -> B64;
+        N -> <<B64/binary, (pad_eq(4 - N))/binary>>
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+pad_eq(1) -> <<"=">>;
+pad_eq(2) -> <<"==">>.
+-compile({inline, [pad_eq/1]}).
 
 %%--------------------------------------------------------------------
 %% @equiv header(KeyId, <<"ES256">>)
@@ -236,7 +341,7 @@ header(KeyId) when is_binary(KeyId) ->
 -spec header(KeyId, Alg) -> Result when
       KeyId :: kid(), Alg :: alg(), Result :: jose_header().
 header(KeyId, Alg) when is_binary(KeyId), is_binary(Alg) ->
-    jsx:encode([{alg, Alg}, {typ, <<"JWT">>}, {kid, KeyId}]).
+    jsx:encode([{alg, Alg}, {typ, ?JWT_TYP}, {kid, KeyId}]).
 
 %%--------------------------------------------------------------------
 %% @doc Make a JWS Payload according to RFC 7515, suitable for APNS,
@@ -258,11 +363,61 @@ payload(Iss, Iat) when is_binary(Iss), is_integer(Iat) ->
 %%--------------------------------------------------------------------
 %% @private
 -compile({inline, [ctx_to_internal/1]}).
+-spec ctx_to_internal(Context) -> InternalContext when
+      Context :: binary(), InternalContext :: apns_jwt_ctx().
 ctx_to_internal(<<Context/binary>>) ->
     #apns_jwt_ctx{} = binary_to_term(Context).
 
 %%--------------------------------------------------------------------
 %% @private
 -compile({inline, [internal_to_ctx/1]}).
+-spec internal_to_ctx(Internal) -> External when
+      Internal :: apns_jwt_ctx(), External :: context().
 internal_to_ctx(#apns_jwt_ctx{} = Internal) ->
     term_to_binary(Internal).
+
+%%--------------------------------------------------------------------
+%% @private
+make_internal(KID, Issuer, #'ECPrivateKey'{}=SigningKey) ->
+    #apns_jwt_ctx{kid = KID,
+                  iss = Issuer,
+                  key = SigningKey,
+                  hdr = signing_header(KID)};
+make_internal(KID, Issuer, <<SigningKeyPem/binary>>) ->
+    make_internal(KID, Issuer, get_private_key(SigningKeyPem)).
+
+%%--------------------------------------------------------------------
+%% @private
+-compile({inline, [bsignature/2]}).
+bsignature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
+    public_key:sign(SigningInput, ?DIGEST_TYPE, Key).
+
+%%--------------------------------------------------------------------
+%% @private
+-compile({inline, [verify_signature/3]}).
+verify_signature(Signature, SigningInput, Context) ->
+    public_key:verify(SigningInput, ?DIGEST_TYPE, Signature,
+                      public_key(Context)).
+
+%%--------------------------------------------------------------------
+%% @private
+verify_jwt_item(<<"alg">>, Alg, _Context) -> Alg =:= ?JWT_ALG;
+verify_jwt_item(<<"typ">>, Typ, _Context) -> Typ =:= ?JWT_TYP;
+verify_jwt_item(<<"kid">>, KID, Context)  -> KID =:= kid(Context);
+verify_jwt_item(<<"iss">>, Iss, Context)  -> Iss =:= iss(Context);
+verify_jwt_item(<<"iat">>, Iat, _Context) ->
+    erlang:system_time(seconds) - Iat < ?MAX_IAT_AGE_SECS.
+
+%%--------------------------------------------------------------------
+%% @private
+generate_private_key_info(Curve, #'ECPrivateKey'{}=ECPrivateKey) ->
+    {ok, PrivKeyOctets} = 'OTP-PUB-KEY':encode('ECPrivateKey', ECPrivateKey),
+    {ok, EcpkOctets} = 'OTP-PUB-KEY':encode('EcpkParameters', Curve),
+    AlgOID = 'OTP-PUB-KEY':'id-ecPublicKey'(),
+    ECParameters = {asn1_OPENTYPE, EcpkOctets},
+    Alg = #'PrivateKeyInfo_privateKeyAlgorithm'{algorithm=AlgOID,
+                                                parameters=ECParameters},
+    #'PrivateKeyInfo'{version=v1,
+                      privateKeyAlgorithm=Alg,
+                      privateKey=PrivKeyOctets}.
+
