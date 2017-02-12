@@ -28,6 +28,7 @@
          base64urlencode/1,
          decode_jwt/1,
          generate_private_key/0,
+         get_private_key/1,
          jwt/1,
          jwt/3,
          iss/1,
@@ -201,6 +202,26 @@ key(#apns_jwt_ctx{key=Key}) ->
     Key.
 
 %%--------------------------------------------------------------------
+%% @doc Transform a pem-encoded PKCS8 binary to a private key structure.
+%% @end
+%%--------------------------------------------------------------------
+-spec get_private_key(SigningKeyPem) -> PrivateKey when
+      SigningKeyPem :: pem_encoded_key(), PrivateKey :: ec_private_key().
+get_private_key(SigningKeyPem) ->
+    [PemEntry] = public_key:pem_decode(SigningKeyPem),
+    %% -record('PrivateKeyInfo',{version, privateKeyAlgorithm,
+    %%         privateKey, attributes}).
+    PrivateKeyInfo = public_key:pem_entry_decode(PemEntry),
+
+    %% So this isn't the end of it - the privateKey component of
+    %% 'PrivateKeyInfo' is just an OCTET-STRING that needs to be further
+    %% decoded as an ECPrivateKey.
+    PrivKeyOctets = PrivateKeyInfo#'PrivateKeyInfo'.privateKey,
+    %% -record('ECPrivateKey', {version, privateKey, parameters, publicKey}).
+    {ok, ECPrivateKey} = 'OTP-PUB-KEY':decode('ECPrivateKey', PrivKeyOctets),
+    ECPrivateKey.
+
+%%--------------------------------------------------------------------
 %% @doc Generate a private key. This is mostly useful for testing.
 -spec generate_private_key() -> ec_private_key().
 generate_private_key() ->
@@ -366,23 +387,6 @@ signature(SigningInput, SigningKeyPem) when is_binary(SigningInput),
     signature(SigningInput, get_private_key(SigningKeyPem));
 signature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
     base64urlencode(public_key:sign(SigningInput, ?DIGEST_TYPE, Key)).
-
-%%--------------------------------------------------------------------
--spec get_private_key(SigningKeyPem) -> PrivateKey when
-      SigningKeyPem :: pem_encoded_key(), PrivateKey :: ec_private_key().
-get_private_key(SigningKeyPem) ->
-    [PemEntry] = public_key:pem_decode(SigningKeyPem),
-    %% -record('PrivateKeyInfo',{version, privateKeyAlgorithm,
-    %%         privateKey, attributes}).
-    PrivateKeyInfo = public_key:pem_entry_decode(PemEntry),
-
-    %% So this isn't the end of it - the privateKey component of
-    %% 'PrivateKeyInfo' is just an OCTET-STRING that needs to be further
-    %% decoded as an ECPrivateKey.
-    PrivKeyOctets = PrivateKeyInfo#'PrivateKeyInfo'.privateKey,
-    %% -record('ECPrivateKey', {version, privateKey, parameters, publicKey}).
-    {ok, ECPrivateKey} = 'OTP-PUB-KEY':decode('ECPrivateKey', PrivKeyOctets),
-    ECPrivateKey.
 
 %%--------------------------------------------------------------------
 %% @private

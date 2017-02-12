@@ -6,7 +6,8 @@
 * [Function Index](#index)
 * [Function Details](#functions)
 
-This module creates a JWT suitable for use with APNS.
+This module supports the creation and validation of APNS
+authorization tokens (JWTs).
 
 Copyright (c) 2016 Silent Circle
 
@@ -219,7 +220,10 @@ posix_time() = pos_integer()
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#base64urldecode-1">base64urldecode/1</a></td><td></td></tr><tr><td valign="top"><a href="#base64urlencode-1">base64urlencode/1</a></td><td></td></tr><tr><td valign="top"><a href="#generate_private_key-0">generate_private_key/0</a></td><td>Generate a private key.</td></tr><tr><td valign="top"><a href="#iss-1">iss/1</a></td><td>Accessor for iss.</td></tr><tr><td valign="top"><a href="#jwt-1">jwt/1</a></td><td>Equivalent to <tt>jwt</tt>.</td></tr><tr><td valign="top"><a href="#jwt-3">jwt/3</a></td><td>Create a JWT for APNS usage, using the current erlang system time.</td></tr><tr><td valign="top"><a href="#key-1">key/1</a></td><td>Accessor for key.</td></tr><tr><td valign="top"><a href="#kid-1">kid/1</a></td><td>Accessor for kid.</td></tr><tr><td valign="top"><a href="#named_curve-0">named_curve/0</a></td><td></td></tr><tr><td valign="top"><a href="#new-3">new/3</a></td><td>Create a signing context from the parameters passed.</td></tr><tr><td valign="top"><a href="#public_key-1">public_key/1</a></td><td>Extract an EC public key from context or private key.</td></tr><tr><td valign="top"><a href="#verify-2">verify/2</a></td><td>Verify a JWT using a context.</td></tr><tr><td valign="top"><a href="#verify-4">verify/4</a></td><td>Verify a JWT using the kid, iss, and signing key.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#base64urldecode-1">base64urldecode/1</a></td><td>
+Base64urldecode <code>Bin</code>, which may or may not have padding.</td></tr><tr><td valign="top"><a href="#base64urlencode-1">base64urlencode/1</a></td><td>
+Base64urlencode <code>Bin</code>, without padding.</td></tr><tr><td valign="top"><a href="#decode_jwt-1">decode_jwt/1</a></td><td>Decode a JWT into <code>{Header, Payload, Signature, SigInput}</code>.</td></tr><tr><td valign="top"><a href="#generate_private_key-0">generate_private_key/0</a></td><td>Generate a private key.</td></tr><tr><td valign="top"><a href="#get_private_key-1">get_private_key/1</a></td><td>Transform a pem-encoded PKCS8 binary to a private key structure.</td></tr><tr><td valign="top"><a href="#iss-1">iss/1</a></td><td>Accessor for iss.</td></tr><tr><td valign="top"><a href="#jwt-1">jwt/1</a></td><td>Equivalent to <tt>jwt</tt>.</td></tr><tr><td valign="top"><a href="#jwt-3">jwt/3</a></td><td>Create a JWT for APNS usage, using the current erlang system time.</td></tr><tr><td valign="top"><a href="#key-1">key/1</a></td><td>Accessor for key.</td></tr><tr><td valign="top"><a href="#kid-1">kid/1</a></td><td>Accessor for kid.</td></tr><tr><td valign="top"><a href="#named_curve-0">named_curve/0</a></td><td>
+Return the named elliptic curve tuple for <code>secp256r1</code>.</td></tr><tr><td valign="top"><a href="#new-3">new/3</a></td><td>Create a signing context from the parameters passed.</td></tr><tr><td valign="top"><a href="#public_key-1">public_key/1</a></td><td>Extract an EC public key from context or private key.</td></tr><tr><td valign="top"><a href="#sign-3">sign/3</a></td><td>Sign a JWT given the JSON header and payload, and the private key.</td></tr><tr><td valign="top"><a href="#verify-2">verify/2</a></td><td>Verify a JWT using a context.</td></tr><tr><td valign="top"><a href="#verify-4">verify/4</a></td><td>Verify a JWT using the kid, iss, and signing key.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -231,10 +235,12 @@ posix_time() = pos_integer()
 ### base64urldecode/1 ###
 
 <pre><code>
-base64urldecode(B64Urlencoded) -&gt; Result
+base64urldecode(Bin) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>B64Urlencoded = <a href="#type-base64_urlencoded">base64_urlencoded()</a></code></li><li><code>Result = binary()</code></li></ul>
+<ul class="definitions"><li><code>Bin = <a href="#type-base64_urlencoded">base64_urlencoded()</a></code></li><li><code>Result = binary()</code></li></ul>
+
+Base64urldecode `Bin`, which may or may not have padding.
 
 <a name="base64urlencode-1"></a>
 
@@ -246,6 +252,31 @@ base64urlencode(Bin) -&gt; Result
 
 <ul class="definitions"><li><code>Bin = binary()</code></li><li><code>Result = <a href="#type-base64_urlencoded">base64_urlencoded()</a></code></li></ul>
 
+Base64urlencode `Bin`, without padding.
+
+<a name="decode_jwt-1"></a>
+
+### decode_jwt/1 ###
+
+<pre><code>
+decode_jwt(JWT) -&gt; Result
+</code></pre>
+
+<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>Result = {Header, Payload, Signature, SigInput} | {error, invalid_jwt}</code></li><li><code>Header = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Payload = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Signature = binary()</code></li><li><code>SigInput = binary()</code></li></ul>
+
+Decode a JWT into `{Header, Payload, Signature, SigInput}`.
+`Header` and `Payload` are both decoded JSON as returned by
+`jsx:decode/1`, and `Signature` is the binary signature of the
+JWT.
+
+`SigInput` is the input to the cryptographic signature validation, and is
+the base64urlencoded JWT header concatenated with `"."` and the
+base64urlencoded JWT payload, e.g.
+
+The JWT is not validated.
+
+Returns `{Header, Payload, Signature}` or '{error, invalid_jwt}'.
+
 <a name="generate_private_key-0"></a>
 
 ### generate_private_key/0 ###
@@ -256,6 +287,18 @@ generate_private_key() -&gt; <a href="#type-ec_private_key">ec_private_key()</a>
 <br />
 
 Generate a private key. This is mostly useful for testing.
+
+<a name="get_private_key-1"></a>
+
+### get_private_key/1 ###
+
+<pre><code>
+get_private_key(SigningKeyPem) -&gt; PrivateKey
+</code></pre>
+
+<ul class="definitions"><li><code>SigningKeyPem = <a href="#type-pem_encoded_key">pem_encoded_key()</a></code></li><li><code>PrivateKey = <a href="#type-ec_private_key">ec_private_key()</a></code></li></ul>
+
+Transform a pem-encoded PKCS8 binary to a private key structure.
 
 <a name="iss-1"></a>
 
@@ -364,6 +407,8 @@ named_curve() -&gt; {namedCurve, OID::tuple()}
 </code></pre>
 <br />
 
+Return the named elliptic curve tuple for `secp256r1`.
+
 <a name="new-3"></a>
 
 ### new/3 ###
@@ -425,20 +470,35 @@ public_key(Opaque) -&gt; PublicKey
 
 Extract an EC public key from context or private key.
 
+<a name="sign-3"></a>
+
+### sign/3 ###
+
+`sign(Hdr, Payload, ECPrivateKey) -> any()`
+
+Sign a JWT given the JSON header and payload, and the private key.
+The header and payload must not be base64urlencoded.
+
 <a name="verify-2"></a>
 
 ### verify/2 ###
 
 <pre><code>
-verify(JWT, Context) -&gt; Result
+verify(JWT, Ctx) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>Context = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
+<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
 
 Verify a JWT using a context.
-Return `ok` on success, `{error, {jwt_validation_failed, [binary()]}}`
-if an error occurred. The list of binaries contains the failed keys of the
-JWT.
+Return `ok` on success, and one of
+`{error, {jwt_validation_failed, [Key :: binary()]}}` or
+
+```
+  {error, {missing_keys, [Key :: binary()],
+           bad_items, [{Key :: binary(), Val :: any()}]}}
+```
+
+if an error occurred.
 
 <a name="verify-4"></a>
 
