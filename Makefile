@@ -34,7 +34,7 @@ compile: $(REBAR)
 	$(REBAR) as $(REBAR_PROFILE) do clean, compile
 
 ct: $(REBAR)
-	$(REBAR) as test do clean, ct
+	$(REBAR) as test do clean, ct, cover
 
 cover: $(REBAR)
 	$(REBAR) as test do clean, compile, cover

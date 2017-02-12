@@ -17,7 +17,8 @@
 %%%-------------------------------------------------------------------
 %%% @author Edwin Fine <efine@silentcircle.com>
 %%% @copyright 2016 Silent Circle
-%%% @doc This module creates a JWT suitable for use with APNS.
+%%% @doc This module supports the creation and validation of APNS
+%%% authorization tokens (JWTs).
 %%% @end
 %%%-------------------------------------------------------------------
 -module(apns_jwt).
@@ -25,6 +26,7 @@
 -export([
          base64urldecode/1,
          base64urlencode/1,
+         decode_jwt/1,
          generate_private_key/0,
          jwt/1,
          jwt/3,
@@ -34,6 +36,7 @@
          named_curve/0,
          new/3,
          public_key/1,
+         sign/3,
          verify/2,
          verify/4
         ]).
@@ -215,31 +218,47 @@ public_key(#apns_jwt_ctx{key=#'ECPrivateKey'{}=Key}) ->
 public_key(<<Context/binary>>) ->
     public_key(ctx_to_internal(Context)).
 
+%%--------------------------------------------------------------------
+%% @doc Sign a JWT given the JSON header and payload, and the private key.
+%% The header and payload must not be base64urlencoded.
+%% @end
+%%-------------------------------------------------------------------
+sign(Hdr, Payload, #'ECPrivateKey'{}=Key) when is_binary(Hdr),
+                                               is_binary(Payload) ->
+    try {jsx:decode(Hdr), jsx:decode(Payload)} of
+        {[{_,_}|_], [{_, _}|_]} ->
+            Msg = <<(base64urlencode(Hdr))/binary, $.,
+                    (base64urlencode(Payload))/binary>>,
+            signature(Msg, Key);
+        _ ->
+            {error, invalid_data}
+    catch
+        error:badarg ->
+            {error, invalid_json}
+    end.
+
 %%-------------------------------------------------------------------
 %% @doc Verify a JWT using a context.
-%% Return `ok' on success, `{error, {jwt_validation_failed, [binary()]}}'
-%% if an error occurred. The list of binaries contains the failed keys of the
-%% JWT.
--spec verify(JWT, Context) -> Result when
-      JWT :: jwt(), Context :: input_context() | apns_jwt_ctx(),
+%% Return `ok' on success, and one of
+%% `{error, {jwt_validation_failed, [Key :: binary()]}}' or
+%%
+%% ```
+%% {error, {missing_keys, [Key :: binary()],
+%%          bad_items, [{Key :: binary(), Val :: any()}]}}
+%% '''
+%%
+%% if an error occurred.
+-spec verify(JWT, Ctx) -> Result when
+      JWT :: jwt(), Ctx :: input_context() | apns_jwt_ctx(),
       Result :: ok | {error, Reason}, Reason :: term().
-verify(<<JWT/binary>>, <<Context/binary>>) ->
-    verify(JWT, ctx_to_internal(Context));
-verify(<<JWT/binary>>, #apns_jwt_ctx{}=Context) ->
-    [BHdr, BPayload, _BSig] = L = binary:split(JWT, <<$.>>, [global]),
-    [JHdr, JPayload, Sig] = [base64urldecode(B) || B <- L],
-    JwtItemVfn = lists:foldl(fun({K, V}, Acc) ->
-                                     [{K, verify_jwt_item(K, V, Context)}|Acc]
-                             end, [], jsx:decode(JHdr) ++ jsx:decode(JPayload)),
-
-    SigInput = <<BHdr/binary, $., BPayload/binary>>,
-    SigVfn = [{<<"signature">>, verify_signature(Sig, SigInput, Context)}],
-
-    case [K || {K, false} <- JwtItemVfn ++ SigVfn] of
-        [] ->
-            ok; % Yay
-        FailedKeys ->
-            {error, {jwt_validation_failed, FailedKeys}}
+verify(<<JWT/binary>>, <<Ctx/binary>>) ->
+    verify(JWT, ctx_to_internal(Ctx));
+verify(<<JWT/binary>>, #apns_jwt_ctx{}=Ctx) ->
+    case decode_jwt(JWT) of
+        {_Hdr, _Payload, _Sig, _SigInput}=Parts ->
+            verify_jwt(Parts, Ctx);
+        {error, _Reason}=Error ->
+            Error
     end.
 
 %%-------------------------------------------------------------------
@@ -253,19 +272,71 @@ verify(JWT, KID, Iss, SigningKey) ->
     verify(JWT, make_internal(KID, Iss, SigningKey)).
 
 %%--------------------------------------------------------------------
+%% @doc Decode a JWT into `{Header, Payload, Signature, SigInput}'.
+%% `Header' and `Payload' are both decoded JSON as returned by
+%% `jsx:decode/1', and `Signature' is the binary signature of the
+%% JWT.
+%%
+%% `SigInput' is the input to the cryptographic signature validation, and is
+%% the base64urlencoded JWT header concatenated with `"."' and the
+%% base64urlencoded JWT payload, e.g.
+%%
+%% The JWT is not validated.
+%%
+%% Returns `{Header, Payload, Signature}' or '{error, invalid_jwt}'.
+%% @end
+%%--------------------------------------------------------------------
+-spec decode_jwt(JWT) -> Result when
+      JWT :: jwt(),
+      Result :: {Header, Payload, Signature, SigInput} | {error, invalid_jwt},
+      Header :: jsx:json_term(), Payload :: jsx:json_term(),
+      Signature :: binary(), SigInput :: binary().
+decode_jwt(<<JWT/binary>>) ->
+    try binary:split(JWT, <<$.>>, [global]) of
+        [BHdr, BPayload, _BSig] = L when byte_size(BHdr) >= 3 andalso
+                                         byte_size(BPayload) >= 3 andalso
+                                         byte_size(_BSig) >= 3 ->
+            [Hdr, Payload, Sig] = [base64urldecode(B) || B <- L],
+            SigInput = <<BHdr/binary, $., BPayload/binary>>,
+            {jsx:decode(Hdr), jsx:decode(Payload), Sig, SigInput};
+        _ ->
+            {error, invalid_jwt}
+    catch
+        _:_ ->
+            {error, invalid_jwt}
+    end.
+
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Base64urlencode `Bin', without padding.
+%% @end
+%%--------------------------------------------------------------------
 -spec base64urlencode(Bin) -> Result when
       Bin :: binary(), Result :: base64_urlencoded().
+base64urlencode(<<>>) ->
+    <<>>;
 base64urlencode(<<Bin/binary>>) ->
     << << case Byte of $+ -> $-; $/ -> $_; _ -> Byte end >>
        || <<Byte>> <= base64:encode(Bin), Byte =/= $= >>.
 
 %%--------------------------------------------------------------------
--spec base64urldecode(B64Urlencoded) -> Result when
-      B64Urlencoded :: base64_urlencoded(), Result :: binary().
-base64urldecode(<<B64Urlencoded/binary>>) ->
+%% @doc
+%% Base64urldecode `Bin', which may or may not have padding.
+%% @end
+%%--------------------------------------------------------------------
+-spec base64urldecode(Bin) -> Result when
+      Bin :: base64_urlencoded(), Result :: binary().
+base64urldecode(<<>>) ->
+    <<>>;
+base64urldecode(<<Bin/binary>>) ->
     base64:decode(<< << case Byte of $- -> $+; $_ -> $/; _ -> Byte end >>
-                     || <<Byte>> <= pad(B64Urlencoded) >>).
+                     || <<Byte>> <= pad(Bin) >>).
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Return the named elliptic curve tuple for `secp256r1'.
+%% @end
 %%--------------------------------------------------------------------
 -spec named_curve() -> {'namedCurve', OID :: tuple()}.
 named_curve() ->
@@ -317,9 +388,14 @@ get_private_key(SigningKeyPem) ->
 %% @private
 -spec pad(B64) -> PaddedB64 when
       B64 :: bstring(), PaddedB64 :: bstring().
+pad(<<>>)           -> <<>>;
+pad(<<B0>>)         -> <<B0, $=, $=, $=>>;
+pad(<<B0, B1>>)     -> <<B0, B1, $=, $=>>;
+pad(<<B0, B1, B2>>) -> <<B0, B1, B2, $=>>;
 pad(<<B64/binary>>) ->
     case byte_size(B64) rem 4 of
         0 -> B64;
+        1 -> erlang:error(badarg);
         N -> <<B64/binary, (pad_eq(4 - N))/binary>>
     end.
 
@@ -400,13 +476,111 @@ verify_signature(Signature, SigningInput, Context) ->
                       public_key(Context)).
 
 %%--------------------------------------------------------------------
+%% The reason these verifications may be done without checking against the
+%% actual values of `kid' and `iss' in the context, is so they can be called to
+%% do a basic verification of the JWT (all required keys present, keys are in
+%% expected format, JWT is unexpired) without having a context.  Basically, a
+%% partial verification.
+%%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
 %% @private
-verify_jwt_item(<<"alg">>, Alg, _Context) -> Alg =:= ?JWT_ALG;
-verify_jwt_item(<<"typ">>, Typ, _Context) -> Typ =:= ?JWT_TYP;
-verify_jwt_item(<<"kid">>, KID, Context)  -> KID =:= kid(Context);
-verify_jwt_item(<<"iss">>, Iss, Context)  -> Iss =:= iss(Context);
-verify_jwt_item(<<"iat">>, Iat, _Context) ->
-    erlang:system_time(seconds) - Iat < ?MAX_IAT_AGE_SECS.
+verify_jwt({Hdr, Payload, Sig, SigInput}, Ctx) ->
+    case {verify_jwt_hdr(Hdr, Ctx),
+          verify_jwt_payload(Payload, Ctx)} of
+        {ok, ok} ->
+            case verify_signature(Sig, SigInput, Ctx) of
+                true ->
+                    ok;
+                false ->
+                    {error, {jwt_validation_failed, signature}}
+            end;
+        {HdrErr, PayloadErr} ->
+            combine_errors([HdrErr, PayloadErr])
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Do a partial verification of the header.
+verify_jwt_hdr(Hdr) ->
+    verify_jwt_hdr(Hdr, undefined).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Do a full verification of the header unless Ctx =:= undefined.
+verify_jwt_hdr(Hdr, Ctx) ->
+    verify_jwt(fun verify_jwt_hdr_item/2, [<<"alg">>, <<"kid">>], Hdr, Ctx).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Do a partial verification of the payload.
+verify_jwt_payload(Payload) ->
+    verify_jwt_payload(Payload, undefined).
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc Do a full verification of the payload unless Ctx =:= undefined.
+verify_jwt_payload(Payload, Ctx) ->
+    verify_jwt(fun verify_jwt_payload_item/2, [<<"iss">>, <<"iat">>],
+               Payload, Ctx).
+
+%%--------------------------------------------------------------------
+%% @private
+verify_jwt(VerifyFun, ReqKeys, Props, Ctx) when is_function(VerifyFun, 2),
+                                                is_list(ReqKeys),
+                                                is_list(Props) ->
+    RKBIs = lists:foldl(fun({K, _V}=Item, {RKeys0, BadItems0}) ->
+                                     RKeys = lists:delete(K, RKeys0),
+                                     BadItems = case VerifyFun(Item, Ctx) of
+                                                   true -> BadItems0;
+                                                   false -> [Item | BadItems0]
+                                               end,
+                                     {RKeys, BadItems}
+                             end, {ReqKeys, []}, Props),
+    canonicalize_error(RKBIs).
+
+%%-------------------------------------------------------------------
+%% @private
+combine_errors(Errs) when is_list(Errs) ->
+    Err = lists:foldl(fun({error, {missing_keys, Ks, bad_items, BIs}},
+                          {Ks0, BIs0}) ->
+                              {Ks ++ Ks0, BIs ++ BIs0};
+                         (_, Acc) ->
+                              Acc
+                      end, {[], []}, Errs),
+    canonicalize_error(Err).
+
+%%--------------------------------------------------------------------
+%% @private
+canonicalize_error({[], []}) ->
+    ok;
+canonicalize_error({Ks, Bs}) when is_list(Ks), is_list(Bs) ->
+    {error, {missing_keys, Ks, bad_items, Bs}}.
+
+%%--------------------------------------------------------------------
+%% @private
+verify_jwt_hdr_item({<<"alg">>, Alg}, _Ctx) ->
+    Alg =:= ?JWT_ALG;
+verify_jwt_hdr_item({<<"kid">>, Kid}, undefined) ->
+    is_binary(Kid) andalso byte_size(Kid) > 0;
+verify_jwt_hdr_item({<<"kid">>, Kid}, Ctx) ->
+    Kid =:= kid(Ctx);
+verify_jwt_hdr_item({<<"typ">>, Typ}, _Ctx) ->
+    Typ =:= ?JWT_TYP;
+verify_jwt_hdr_item(_Item, _Ctx) ->
+    true. % Allow any other items
+
+%%--------------------------------------------------------------------
+%% @private
+verify_jwt_payload_item({<<"iss">>, Iss}, undefined) ->
+    is_binary(Iss) andalso byte_size(Iss) > 0;
+verify_jwt_payload_item({<<"iss">>, Iss}, Ctx) ->
+    Iss =:= iss(Ctx);
+verify_jwt_payload_item({<<"iat">>, Iat}, _Ctx) ->
+    is_integer(Iat) andalso
+    erlang:system_time(seconds) - Iat < ?MAX_IAT_AGE_SECS;
+verify_jwt_payload_item(_, _Ctx) ->
+    true.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -420,4 +594,5 @@ generate_private_key_info(Curve, #'ECPrivateKey'{}=ECPrivateKey) ->
     #'PrivateKeyInfo'{version=v1,
                       privateKeyAlgorithm=Alg,
                       privateKey=PrivKeyOctets}.
+
 
