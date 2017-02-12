@@ -39,7 +39,8 @@
          public_key/1,
          sign/3,
          verify/2,
-         verify/4
+         verify/4,
+         verify_jwt/2
         ]).
 
 -export_type([
@@ -293,6 +294,33 @@ verify(JWT, KID, Iss, SigningKey) ->
     verify(JWT, make_internal(KID, Iss, SigningKey)).
 
 %%--------------------------------------------------------------------
+%% @doc
+%% Verify a JWT as decoded by `decode_jwt/1'.
+%% @end
+%%--------------------------------------------------------------------
+-spec verify_jwt({Hdr, Payload, Sig, SigInput}, Ctx) -> Result when
+      Hdr :: jsx:json_term(), Payload :: jsx:json_term(),
+      Sig :: binary(), SigInput :: binary(),
+      Ctx :: input_context() | apns_jwt_ctx(),
+      Result :: ok
+              | {error, {jwt_validation_failed, signature}}
+              | {error, {missing_keys, Ks, bad_items, Bs}},
+      Ks :: [KeyName :: binary()], Bs :: [{KeyName :: binary(), Val :: any()}].
+verify_jwt({Hdr, Payload, Sig, SigInput}, Ctx) ->
+    case {verify_jwt_hdr(Hdr, Ctx),
+          verify_jwt_payload(Payload, Ctx)} of
+        {ok, ok} ->
+            case verify_signature(Sig, SigInput, Ctx) of
+                true ->
+                    ok;
+                false ->
+                    {error, {jwt_validation_failed, signature}}
+            end;
+        {HdrErr, PayloadErr} ->
+            combine_errors([HdrErr, PayloadErr])
+    end.
+
+%%--------------------------------------------------------------------
 %% @doc Decode a JWT into `{Header, Payload, Signature, SigInput}'.
 %% `Header' and `Payload' are both decoded JSON as returned by
 %% `jsx:decode/1', and `Signature' is the binary signature of the
@@ -486,22 +514,6 @@ verify_signature(Signature, SigningInput, Context) ->
 %% expected format, JWT is unexpired) without having a context.  Basically, a
 %% partial verification.
 %%--------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
-%% @private
-verify_jwt({Hdr, Payload, Sig, SigInput}, Ctx) ->
-    case {verify_jwt_hdr(Hdr, Ctx),
-          verify_jwt_payload(Payload, Ctx)} of
-        {ok, ok} ->
-            case verify_signature(Sig, SigInput, Ctx) of
-                true ->
-                    ok;
-                false ->
-                    {error, {jwt_validation_failed, signature}}
-            end;
-        {HdrErr, PayloadErr} ->
-            combine_errors([HdrErr, PayloadErr])
-    end.
 
 %%--------------------------------------------------------------------
 %% @private

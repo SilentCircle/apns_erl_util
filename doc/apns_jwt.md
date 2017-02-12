@@ -223,7 +223,8 @@ posix_time() = pos_integer()
 <table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#base64urldecode-1">base64urldecode/1</a></td><td>
 Base64urldecode <code>Bin</code>, which may or may not have padding.</td></tr><tr><td valign="top"><a href="#base64urlencode-1">base64urlencode/1</a></td><td>
 Base64urlencode <code>Bin</code>, without padding.</td></tr><tr><td valign="top"><a href="#decode_jwt-1">decode_jwt/1</a></td><td>Decode a JWT into <code>{Header, Payload, Signature, SigInput}</code>.</td></tr><tr><td valign="top"><a href="#generate_private_key-0">generate_private_key/0</a></td><td>Generate a private key.</td></tr><tr><td valign="top"><a href="#get_private_key-1">get_private_key/1</a></td><td>Transform a pem-encoded PKCS8 binary to a private key structure.</td></tr><tr><td valign="top"><a href="#iss-1">iss/1</a></td><td>Accessor for iss.</td></tr><tr><td valign="top"><a href="#jwt-1">jwt/1</a></td><td>Equivalent to <tt>jwt</tt>.</td></tr><tr><td valign="top"><a href="#jwt-3">jwt/3</a></td><td>Create a JWT for APNS usage, using the current erlang system time.</td></tr><tr><td valign="top"><a href="#key-1">key/1</a></td><td>Accessor for key.</td></tr><tr><td valign="top"><a href="#kid-1">kid/1</a></td><td>Accessor for kid.</td></tr><tr><td valign="top"><a href="#named_curve-0">named_curve/0</a></td><td>
-Return the named elliptic curve tuple for <code>secp256r1</code>.</td></tr><tr><td valign="top"><a href="#new-3">new/3</a></td><td>Create a signing context from the parameters passed.</td></tr><tr><td valign="top"><a href="#public_key-1">public_key/1</a></td><td>Extract an EC public key from context or private key.</td></tr><tr><td valign="top"><a href="#sign-3">sign/3</a></td><td>Sign a JWT given the JSON header and payload, and the private key.</td></tr><tr><td valign="top"><a href="#verify-2">verify/2</a></td><td>Verify a JWT using a context.</td></tr><tr><td valign="top"><a href="#verify-4">verify/4</a></td><td>Verify a JWT using the kid, iss, and signing key.</td></tr></table>
+Return the named elliptic curve tuple for <code>secp256r1</code>.</td></tr><tr><td valign="top"><a href="#new-3">new/3</a></td><td>Create a signing context from the parameters passed.</td></tr><tr><td valign="top"><a href="#public_key-1">public_key/1</a></td><td>Extract an EC public key from context or private key.</td></tr><tr><td valign="top"><a href="#sign-3">sign/3</a></td><td>Sign a JWT given the JSON header and payload, and the private key.</td></tr><tr><td valign="top"><a href="#verify-2">verify/2</a></td><td>Verify a JWT using a context.</td></tr><tr><td valign="top"><a href="#verify-4">verify/4</a></td><td>Verify a JWT using the kid, iss, and signing key.</td></tr><tr><td valign="top"><a href="#verify_jwt-2">verify_jwt/2</a></td><td>
+Verify a JWT as decoded by <code>decode_jwt/1</code>.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -513,4 +514,16 @@ verify(JWT, KID, Iss, SigningKey) -&gt; Result
 Verify a JWT using the kid, iss, and signing key.
 
 __See also:__ [verify/2](#verify-2).
+
+<a name="verify_jwt-2"></a>
+
+### verify_jwt/2 ###
+
+<pre><code>
+verify_jwt(X1::{Hdr, Payload, Sig, SigInput}, Ctx) -&gt; Result
+</code></pre>
+
+<ul class="definitions"><li><code>Hdr = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Payload = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Sig = binary()</code></li><li><code>SigInput = binary()</code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Result = ok | {error, {jwt_validation_failed, signature}} | {error, {missing_keys, Ks, bad_items, Bs}}</code></li><li><code>Ks = [KeyName::binary()]</code></li><li><code>Bs = [{KeyName::binary(), Val::any()}]</code></li></ul>
+
+Verify a JWT as decoded by `decode_jwt/1`.
 
