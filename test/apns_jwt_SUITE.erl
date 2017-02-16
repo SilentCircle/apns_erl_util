@@ -263,10 +263,11 @@ validate_jwt(Jwt, Ctx) ->
 
 %%--------------------------------------------------------------------
 verify_signature(Signature, SigningInput, PublicKey) ->
-    ExplicitCurve = crypto:ec_curve(secp256r1),
+    ExplicitCurve = crypto:ec_curve(prime256v1),
     {ECPoint, _} = PublicKey,
     Key = [ECPoint#'ECPoint'.point, ExplicitCurve],
-    true = crypto:verify(ecdsa, sha256, SigningInput, Signature, Key).
+    Sig = maybe_der_encode(Signature),
+    true = crypto:verify(ecdsa, sha256, SigningInput, Sig, Key).
 
 %%--------------------------------------------------------------------
 validate_jwt(JWT, KID, Issuer, SigningKey) ->
@@ -283,3 +284,15 @@ make_context() ->
     Issuer = ?TEST_ISS,
     SigningKey = apns_jwt:generate_private_key(),
     apns_jwt:new(KID, Issuer, SigningKey).
+
+%%--------------------------------------------------------------------
+maybe_der_encode(<<Sig/binary>>) when byte_size(Sig) =:= 64 ->
+    <<R:32/big-integer-unit:8, S:32/big-integer-unit:8>> = Sig,
+    ECDSASigValue = #'ECDSA-Sig-Value'{r=R, s=S},
+    {ok, DEREncSig} = 'OTP-PUB-KEY':encode('ECDSA-Sig-Value',
+                                           ECDSASigValue),
+    DEREncSig;
+maybe_der_encode(<<Sig/binary>>) ->
+    Sig.
+
+

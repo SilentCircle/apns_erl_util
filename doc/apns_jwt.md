@@ -122,7 +122,7 @@ jose_header() = <a href="#type-json">json()</a>
 
 
 <pre><code>
-json() = <a href="#type-bstring">bstring()</a>
+json() = <a href="jsx.md#type-json_text">jsx:json_text()</a>
 </code></pre>
 
 
@@ -168,16 +168,6 @@ jwt() = <a href="#type-bstring">bstring()</a>
 
 
 
-### <a name="type-key">key()</a> ###
-
-
-<pre><code>
-key() = term()
-</code></pre>
-
-
-
-
 ### <a name="type-kid">kid()</a> ###
 
 
@@ -213,6 +203,16 @@ pem_encoded_key() = <a href="#type-bstring">bstring()</a>
 
 <pre><code>
 posix_time() = pos_integer()
+</code></pre>
+
+
+
+
+### <a name="type-signing_key">signing_key()</a> ###
+
+
+<pre><code>
+signing_key() = <a href="#type-pem_encoded_key">pem_encoded_key()</a> | <a href="#type-ec_private_key">ec_private_key()</a>
 </code></pre>
 
 <a name="index"></a>
@@ -309,7 +309,7 @@ Transform a pem-encoded PKCS8 binary to a private key structure.
 iss(Context) -&gt; Iss
 </code></pre>
 
-<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Iss = <a href="#type-iss">iss()</a></code></li></ul>
+<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a></code></li><li><code>Iss = <a href="#type-iss">iss()</a></code></li></ul>
 
 Accessor for iss.
 
@@ -333,7 +333,7 @@ Equivalent to `jwt`.
 jwt(KID, Issuer, SigningKey) -&gt; JWT
 </code></pre>
 
-<ul class="definitions"><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Issuer = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-pem_encoded_key">pem_encoded_key()</a> | <a href="#type-ec_private_key">ec_private_key()</a></code></li><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li></ul>
+<ul class="definitions"><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Issuer = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-signing_key">signing_key()</a></code></li><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li></ul>
 
 Create a JWT for APNS usage, using the current erlang system time.
 This is signed with ECDSA using the P-256 curve and the ES256 algorithm.
@@ -364,14 +364,14 @@ developer portal.</dt>
 
 
 
-<dd><code>SigningKey:: pem_encoded_key() | ec_private_key()</code></dd>
+<dd><code>SigningKey :: signing_key()</code></dd>
 
 
 
 
 <dt>This is the private key downloaded from the Apple
 developer portal, either PEM-encoded as downloaded, or as
-an #'ECPrivateKey{}' record.</dt>
+an <code>#'ECPrivateKey{}'</code> record.</dt>
 
 
 
@@ -383,7 +383,7 @@ an #'ECPrivateKey{}' record.</dt>
 key(Context) -&gt; Key
 </code></pre>
 
-<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Key = <a href="#type-key">key()</a></code></li></ul>
+<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a></code></li><li><code>Key = <a href="#type-signing_key">signing_key()</a></code></li></ul>
 
 Accessor for key.
 
@@ -395,7 +395,7 @@ Accessor for key.
 kid(Context) -&gt; KID
 </code></pre>
 
-<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>KID = <a href="#type-kid">kid()</a></code></li></ul>
+<ul class="definitions"><li><code>Context = <a href="#type-input_context">input_context()</a></code></li><li><code>KID = <a href="#type-kid">kid()</a></code></li></ul>
 
 Accessor for kid.
 
@@ -418,7 +418,7 @@ Return the named elliptic curve tuple for `secp256r1`.
 new(KID, Issuer, SigningKey) -&gt; Context
 </code></pre>
 
-<ul class="definitions"><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Issuer = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-pem_encoded_key">pem_encoded_key()</a> | <a href="#type-ec_private_key">ec_private_key()</a></code></li><li><code>Context = <a href="#type-context">context()</a></code></li></ul>
+<ul class="definitions"><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Issuer = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-signing_key">signing_key()</a></code></li><li><code>Context = <a href="#type-context">context()</a></code></li></ul>
 
 Create a signing context from the parameters passed. This can
 be used later to create a JWT.
@@ -449,7 +449,7 @@ developer portal.</dt>
 
 
 
-<dd><code>SigningKey :: pem_encoded_key()</code></dd>
+<dd><code>SigningKey :: signing_key()</code></dd>
 
 
 
@@ -475,7 +475,11 @@ Extract an EC public key from context or private key.
 
 ### sign/3 ###
 
-`sign(Hdr, Payload, ECPrivateKey) -> any()`
+<pre><code>
+sign(JsonHdr, JsonPayload, Key) -&gt; Result
+</code></pre>
+
+<ul class="definitions"><li><code>JsonHdr = <a href="#type-jose_header">jose_header()</a></code></li><li><code>JsonPayload = <a href="#type-jws_payload">jws_payload()</a></code></li><li><code>Key = <a href="#type-ec_private_key">ec_private_key()</a></code></li><li><code>Result = <a href="#type-jws_signature">jws_signature()</a></code></li></ul>
 
 Sign a JWT given the JSON header and payload, and the private key.
 The header and payload must not be base64urlencoded.
@@ -488,7 +492,7 @@ The header and payload must not be base64urlencoded.
 verify(JWT, Ctx) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
+<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
 
 Verify a JWT using a context.
 Return `ok` on success, and one of
@@ -509,7 +513,7 @@ if an error occurred.
 verify(JWT, KID, Iss, SigningKey) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Iss = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-pem_encoded_key">pem_encoded_key()</a> | <a href="#type-ec_private_key">ec_private_key()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
+<ul class="definitions"><li><code>JWT = <a href="#type-jwt">jwt()</a></code></li><li><code>KID = <a href="#type-kid">kid()</a></code></li><li><code>Iss = <a href="#type-iss">iss()</a></code></li><li><code>SigningKey = <a href="#type-signing_key">signing_key()</a></code></li><li><code>Result = ok | {error, Reason}</code></li><li><code>Reason = term()</code></li></ul>
 
 Verify a JWT using the kid, iss, and signing key.
 
@@ -523,7 +527,7 @@ __See also:__ [verify/2](#verify-2).
 verify_jwt(X1::{Hdr, Payload, Sig, SigInput}, Ctx) -&gt; Result
 </code></pre>
 
-<ul class="definitions"><li><code>Hdr = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Payload = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Sig = binary()</code></li><li><code>SigInput = binary()</code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a></code></li><li><code>Result = ok | {error, {jwt_validation_failed, signature}} | {error, {missing_keys, Ks, bad_items, Bs}}</code></li><li><code>Ks = [KeyName::binary()]</code></li><li><code>Bs = [{KeyName::binary(), Val::any()}]</code></li></ul>
+<ul class="definitions"><li><code>Hdr = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Payload = <a href="jsx.md#type-json_term">jsx:json_term()</a></code></li><li><code>Sig = binary()</code></li><li><code>SigInput = binary()</code></li><li><code>Ctx = <a href="#type-input_context">input_context()</a></code></li><li><code>Result = ok | {error, {jwt_validation_failed, signature}} | {error, {missing_keys, Ks, bad_items, Bs}}</code></li><li><code>Ks = [KeyName::binary()]</code></li><li><code>Bs = [{KeyName::binary(), Val::any()}]</code></li></ul>
 
 Verify a JWT as decoded by `decode_jwt/1`.
 

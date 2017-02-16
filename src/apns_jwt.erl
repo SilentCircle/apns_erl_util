@@ -57,10 +57,10 @@
               jws_signature/0,
               jws_signing_input/0,
               jwt/0,
-              key/0,
               kid/0,
               pem_encoded_key/0,
-              posix_time/0
+              posix_time/0,
+              signing_key/0
              ]).
 
 -include_lib("public_key/include/public_key.hrl").
@@ -78,13 +78,13 @@
 %%%-------------------------------------------------------------------
 -type bstring() :: binary().
 -type base64_urlencoded() :: bstring().
--type json() :: bstring().
+-type digest_type() :: atom().
+-type json() :: jsx:json_text().
 -type posix_time() :: pos_integer().
 -type alg() :: bstring().
 -type iat() :: posix_time().
 -type iss() :: bstring().
 -type kid() :: bstring().
--type key() :: term().
 -type jose_header() :: json().
 -type jws_payload() :: json().
 -type jws_signature() :: base64_urlencoded().
@@ -92,13 +92,15 @@
 -type jwt() :: bstring().
 -type pem_encoded_key() :: bstring().
 -type ec_private_key() :: #'ECPrivateKey'{}.
+-type signing_key() :: pem_encoded_key() | ec_private_key().
 
 -record(apns_jwt_ctx,
-        {kid,
-         iss,
-         digest=?DIGEST_TYPE,
-         key,
-         hdr}).
+        {kid                   :: bstring(),
+         iss                   :: bstring(),
+         digest = ?DIGEST_TYPE :: digest_type(),
+         key                   :: ec_private_key(),
+         enc_hdr               :: base64_urlencoded() % JWT header JSON
+        }).
 
 -type apns_jwt_ctx() :: #apns_jwt_ctx{}.
 -type output_context() :: binary().
@@ -120,17 +122,15 @@
 %%   developer portal.</dt>
 %%   <dd>`Issuer :: binary()'</dd>
 %%   <dt>This is the Apple Team ID from the Apple developer portal.</dt>
-%%   <dd>`SigningKey:: pem_encoded_key() | ec_private_key()'</dd>
+%%   <dd>`SigningKey :: signing_key()'</dd>
 %%   <dt>This is the private key downloaded from the Apple
 %%   developer portal, either PEM-encoded as downloaded, or as
-%%   an #'ECPrivateKey{}' record.</dt>
+%%   an `` #'ECPrivateKey{}' '' record.</dt>
 %% </dl>
 %% @end
 %%-------------------------------------------------------------------
 -spec jwt(KID, Issuer, SigningKey) -> JWT when
-      KID :: kid(), Issuer :: iss(),
-      SigningKey :: pem_encoded_key() | ec_private_key(),
-      JWT :: jwt().
+      KID :: kid(), Issuer :: iss(), SigningKey :: signing_key(), JWT :: jwt().
 jwt(KID, Issuer, SigningKey) when is_binary(KID) andalso
                                   is_binary(Issuer) andalso
                                   ?IS_SIGNING_KEY(SigningKey) ->
@@ -160,15 +160,14 @@ jwt(#apns_jwt_ctx{}=Context) ->
 %%   developer portal.</dt>
 %%   <dd>`Issuer :: binary()'</dd>
 %%   <dt>This is the Apple Team ID from the Apple developer portal.</dt>
-%%   <dd>`SigningKey :: pem_encoded_key()'</dd>
+%%   <dd>`SigningKey :: signing_key()'</dd>
 %%   <dt>This is the PEM-encoded private key downloaded from the Apple
 %%   developer portal.</dt>
 %% </dl>
 %% @end
 %%-------------------------------------------------------------------
 -spec new(KID, Issuer, SigningKey) -> Context when
-      KID :: kid(), Issuer :: iss(),
-      SigningKey :: pem_encoded_key() | ec_private_key(),
+      KID :: kid(), Issuer :: iss(), SigningKey :: signing_key(),
       Context :: context().
 new(KID, Issuer, SigningKey) when is_binary(KID) andalso
                                   is_binary(Issuer) andalso
@@ -178,7 +177,7 @@ new(KID, Issuer, SigningKey) when is_binary(KID) andalso
 %%-------------------------------------------------------------------
 %% @doc Accessor for kid.
 -spec kid(Context) -> KID when
-      Context :: input_context() | apns_jwt_ctx(), KID :: kid().
+      Context :: input_context(), KID :: kid().
 kid(<<Context/binary>>) ->
     kid(ctx_to_internal(Context));
 kid(#apns_jwt_ctx{kid=KID}) ->
@@ -187,7 +186,7 @@ kid(#apns_jwt_ctx{kid=KID}) ->
 %%-------------------------------------------------------------------
 %% @doc Accessor for iss.
 -spec iss(Context) -> Iss when
-      Context :: input_context() | apns_jwt_ctx(), Iss :: iss().
+      Context :: input_context(), Iss :: iss().
 iss(<<Context/binary>>) ->
     iss(ctx_to_internal(Context));
 iss(#apns_jwt_ctx{iss=Iss}) ->
@@ -196,7 +195,7 @@ iss(#apns_jwt_ctx{iss=Iss}) ->
 %%-------------------------------------------------------------------
 %% @doc Accessor for key.
 -spec key(Context) -> Key when
-      Context :: input_context() | apns_jwt_ctx(), Key :: key().
+      Context :: input_context(), Key :: signing_key().
 key(<<Context/binary>>) ->
     key(ctx_to_internal(Context));
 key(#apns_jwt_ctx{key=Key}) ->
@@ -245,12 +244,14 @@ public_key(<<Context/binary>>) ->
 %% The header and payload must not be base64urlencoded.
 %% @end
 %%-------------------------------------------------------------------
-sign(Hdr, Payload, #'ECPrivateKey'{}=Key) when is_binary(Hdr),
-                                               is_binary(Payload) ->
-    try {jsx:decode(Hdr), jsx:decode(Payload)} of
+-spec sign(JsonHdr, JsonPayload, Key) -> Result when
+      JsonHdr :: jose_header(), JsonPayload :: jws_payload(),
+      Key :: ec_private_key(), Result :: jws_signature().
+sign(<<JsonHdr/binary>>, <<JsonPayload/binary>>, #'ECPrivateKey'{}=Key) ->
+    try {jsx:decode(JsonHdr), jsx:decode(JsonPayload)} of
         {[{_,_}|_], [{_, _}|_]} ->
-            Msg = <<(base64urlencode(Hdr))/binary, $.,
-                    (base64urlencode(Payload))/binary>>,
+            Msg = signing_input_hp(base64urlencode(JsonHdr),
+                                   base64urlencode(JsonPayload)),
             signature(Msg, Key);
         _ ->
             {error, invalid_data}
@@ -271,7 +272,7 @@ sign(Hdr, Payload, #'ECPrivateKey'{}=Key) when is_binary(Hdr),
 %%
 %% if an error occurred.
 -spec verify(JWT, Ctx) -> Result when
-      JWT :: jwt(), Ctx :: input_context() | apns_jwt_ctx(),
+      JWT :: jwt(), Ctx :: input_context(),
       Result :: ok | {error, Reason}, Reason :: term().
 verify(<<JWT/binary>>, <<Ctx/binary>>) ->
     verify(JWT, ctx_to_internal(Ctx));
@@ -287,8 +288,7 @@ verify(<<JWT/binary>>, #apns_jwt_ctx{}=Ctx) ->
 %% @doc Verify a JWT using the kid, iss, and signing key.
 %% @see verify/2
 -spec verify(JWT, KID, Iss, SigningKey) -> Result when
-      JWT :: jwt(), KID :: kid(), Iss :: iss(),
-      SigningKey:: pem_encoded_key() | ec_private_key(),
+      JWT :: jwt(), KID :: kid(), Iss :: iss(), SigningKey:: signing_key(),
       Result :: ok | {error, Reason}, Reason :: term().
 verify(JWT, KID, Iss, SigningKey) ->
     verify(JWT, make_internal(KID, Iss, SigningKey)).
@@ -300,8 +300,7 @@ verify(JWT, KID, Iss, SigningKey) ->
 %%--------------------------------------------------------------------
 -spec verify_jwt({Hdr, Payload, Sig, SigInput}, Ctx) -> Result when
       Hdr :: jsx:json_term(), Payload :: jsx:json_term(),
-      Sig :: binary(), SigInput :: binary(),
-      Ctx :: input_context() | apns_jwt_ctx(),
+      Sig :: binary(), SigInput :: binary(), Ctx :: input_context(),
       Result :: ok
               | {error, {jwt_validation_failed, signature}}
               | {error, {missing_keys, Ks, bad_items, Bs}},
@@ -346,7 +345,7 @@ decode_jwt(<<JWT/binary>>) ->
                                          byte_size(BPayload) >= 3 andalso
                                          byte_size(_BSig) >= 3 ->
             [Hdr, Payload, Sig] = [base64urldecode(B) || B <- L],
-            SigInput = <<BHdr/binary, $., BPayload/binary>>,
+            SigInput = signing_input_hp(BHdr, BPayload),
             {jsx:decode(Hdr), jsx:decode(Payload), Sig, SigInput};
         _ ->
             {error, invalid_jwt}
@@ -397,24 +396,42 @@ named_curve() ->
 %%--------------------------------------------------------------------
 -spec signing_input(Context) -> Result when
       Context :: apns_jwt_ctx(), Result :: jws_signing_input().
-signing_input(#apns_jwt_ctx{hdr=Hdr, iss=Iss}) ->
-    list_to_binary([Hdr, $., base64urlencode(payload(Iss))]).
+signing_input(#apns_jwt_ctx{enc_hdr=EncHdr, iss=Iss}) ->
+    signing_input_hi(EncHdr, Iss).
+
+-compile({inline, [signing_input/1]}).
 
 %%--------------------------------------------------------------------
--spec signing_header(KID) -> Result when KID :: kid(), Result :: binary().
+-spec signing_input_hi(EncHdr, Iss) -> Result when
+      EncHdr :: base64_urlencoded(), Iss :: bstring(),
+      Result :: jws_signing_input().
+signing_input_hi(<<EncHdr/binary>>, <<Iss/binary>>) ->
+    signing_input_hp(EncHdr, base64urlencode(payload(Iss))).
+
+-compile({inline, [signing_input_hi/2]}).
+%%--------------------------------------------------------------------
+-spec signing_input_hp(EncHdr, EncPayload) -> Result when
+      EncHdr :: base64_urlencoded(), EncPayload :: base64_urlencoded(),
+      Result :: jws_signing_input().
+signing_input_hp(<<EncHdr/binary>>, <<EncPayload/binary>>) ->
+    <<EncHdr/binary, $., EncPayload/binary>>.
+
+-compile({inline, [signing_input_hp/2]}).
+%%--------------------------------------------------------------------
+-spec signing_header(KID) -> Result when
+      KID :: kid(), Result :: base64_urlencoded().
 signing_header(KID) when is_binary(KID) ->
     base64urlencode(header(KID)).
 
 %%--------------------------------------------------------------------
--spec signature(SigningInput, SigningKeyPem) -> Result when
-      SigningInput :: jws_signing_input(),
-      SigningKeyPem :: pem_encoded_key() | #'ECPrivateKey'{},
+-spec signature(SigningInput, SigningKey) -> Result when
+      SigningInput :: jws_signing_input(), SigningKey :: signing_key(),
       Result :: jws_signature().
-signature(SigningInput, SigningKeyPem) when is_binary(SigningInput),
-                                            is_binary(SigningKeyPem) ->
-    signature(SigningInput, get_private_key(SigningKeyPem));
+signature(SigningInput, SigningKey) when is_binary(SigningInput),
+                                         is_binary(SigningKey) ->
+    signature(SigningInput, get_private_key(SigningKey));
 signature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
-    base64urlencode(public_key:sign(SigningInput, ?DIGEST_TYPE, Key)).
+    base64urlencode(bsignature(SigningInput, Key)).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -490,22 +507,36 @@ make_internal(KID, Issuer, #'ECPrivateKey'{}=SigningKey) ->
     #apns_jwt_ctx{kid = KID,
                   iss = Issuer,
                   key = SigningKey,
-                  hdr = signing_header(KID)};
+                  enc_hdr = signing_header(KID)};
 make_internal(KID, Issuer, <<SigningKeyPem/binary>>) ->
     make_internal(KID, Issuer, get_private_key(SigningKeyPem)).
 
 %%--------------------------------------------------------------------
 %% @private
+%% @doc Signing is tricky. The signature
+%% created by public_key:sign/3 and crypto:sign/3 is in DER-encoded
+%% format, which is NOT what APNS wants, which is the raw 64-byte
+%% format. The DER-encoded format is 71 bytes long. We have to DER-decode
+%% the signature value to get what we want.
+%%
+%% This can be done (found after much digging) using
+%% 'OTP-PUB-KEY':decode('ECDSA-Sig-Value', binary()), which returns a
+%% #'ECDSA-Sig-Value'{r, s} record. r and s are both large integers.
+%% Encode r and s into a 64-byte binary, consisting of r and s each encoded as
+%% big-endian integers, and use that as the signature.
+%% @end
+%%--------------------------------------------------------------------
 -compile({inline, [bsignature/2]}).
 bsignature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
-    public_key:sign(SigningInput, ?DIGEST_TYPE, Key).
+    Sig = public_key:sign(SigningInput, ?DIGEST_TYPE, Key),
+    maybe_der_decode_sig(Sig).
 
 %%--------------------------------------------------------------------
 %% @private
 -compile({inline, [verify_signature/3]}).
 verify_signature(Signature, SigningInput, Context) ->
-    public_key:verify(SigningInput, ?DIGEST_TYPE, Signature,
-                      public_key(Context)).
+    Sig = maybe_der_encode_sig(Signature),
+    public_key:verify(SigningInput, ?DIGEST_TYPE, Sig, public_key(Context)).
 
 %%--------------------------------------------------------------------
 %% The reason these verifications may be done without checking against the
@@ -575,6 +606,9 @@ canonicalize_error({Ks, Bs}) when is_list(Ks), is_list(Bs) ->
 
 %%--------------------------------------------------------------------
 %% @private
+-spec verify_jwt_hdr_item(Item, Context) -> boolean() when
+      Item :: {Key, Value}, Context :: input_context(),
+      Key :: binary(), Value :: any().
 verify_jwt_hdr_item({<<"alg">>, Alg}, _Ctx) ->
     Alg =:= ?JWT_ALG;
 verify_jwt_hdr_item({<<"kid">>, Kid}, undefined) ->
@@ -588,6 +622,9 @@ verify_jwt_hdr_item(_Item, _Ctx) ->
 
 %%--------------------------------------------------------------------
 %% @private
+-spec verify_jwt_payload_item(Item, Context) -> boolean() when
+      Item :: {Key, Value}, Context :: input_context(),
+      Key :: binary(), Value :: any().
 verify_jwt_payload_item({<<"iss">>, Iss}, undefined) ->
     is_binary(Iss) andalso byte_size(Iss) > 0;
 verify_jwt_payload_item({<<"iss">>, Iss}, Ctx) ->
@@ -611,4 +648,27 @@ generate_private_key_info(Curve, #'ECPrivateKey'{}=ECPrivateKey) ->
                       privateKeyAlgorithm=Alg,
                       privateKey=PrivKeyOctets}.
 
+
+%%--------------------------------------------------------------------
+%% @private
+maybe_der_encode_sig(<<R:32/big-integer-unit:8, S:32/big-integer-unit:8>>) ->
+    ECDSASigValue = #'ECDSA-Sig-Value'{r=R, s=S},
+    {ok, DEREncSig} = 'OTP-PUB-KEY':encode('ECDSA-Sig-Value', ECDSASigValue),
+    DEREncSig;
+maybe_der_encode_sig(<<Sig/binary>>) ->
+    Sig.
+
+%%--------------------------------------------------------------------
+%% @private
+maybe_der_decode_sig(<<Sig/binary>>) ->
+    try 'OTP-PUB-KEY':decode('ECDSA-Sig-Value', Sig) of
+        {ok, ECDSASigValue} ->
+            #'ECDSA-Sig-Value'{r=R, s=S} = ECDSASigValue,
+            <<R:32/big-integer-unit:8, S:32/big-integer-unit:8>>;
+        _ ->
+            Sig
+    catch
+        _:_ ->
+            Sig
+    end.
 
