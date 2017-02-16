@@ -67,13 +67,16 @@
 
 -define(JWT_ALG, <<"ES256">>).
 -define(JWT_TYP, <<"JWT">>).
--define(DIGEST_TYPE, sha256).
 -define(MAX_IAT_AGE_SECS, 60*60). % APNS gives it an hour
-
 -define(IS_SIGNING_KEY(SigningKey),
         (is_binary(SigningKey) orelse is_record(SigningKey, 'ECPrivateKey'))).
 
-%%%-------------------------------------------------------------------
+%% Key signing parameters
+-define(DIGEST_TYPE, sha256).
+-define(ALGORITHM, ecdsa).
+-define(CURVE, prime256v1).
+
+%%%------------------------------------------------------------------
 %%% Types
 %%%-------------------------------------------------------------------
 -type bstring() :: binary().
@@ -208,18 +211,21 @@ key(#apns_jwt_ctx{key=Key}) ->
 -spec get_private_key(SigningKeyPem) -> PrivateKey when
       SigningKeyPem :: pem_encoded_key(), PrivateKey :: ec_private_key().
 get_private_key(SigningKeyPem) ->
-    [PemEntry] = public_key:pem_decode(SigningKeyPem),
-    %% -record('PrivateKeyInfo',{version, privateKeyAlgorithm,
-    %%         privateKey, attributes}).
-    PrivateKeyInfo = public_key:pem_entry_decode(PemEntry),
-
-    %% So this isn't the end of it - the privateKey component of
-    %% 'PrivateKeyInfo' is just an OCTET-STRING that needs to be further
-    %% decoded as an ECPrivateKey.
-    PrivKeyOctets = PrivateKeyInfo#'PrivateKeyInfo'.privateKey,
-    %% -record('ECPrivateKey', {version, privateKey, parameters, publicKey}).
-    {ok, ECPrivateKey} = 'OTP-PUB-KEY':decode('ECPrivateKey', PrivKeyOctets),
-    ECPrivateKey.
+    ExpType = 'PrivateKeyInfo',
+    case public_key:pem_decode(SigningKeyPem) of
+        [{ExpType, DER, _}] ->
+            #'PrivateKeyInfo'{}=PKI = public_key:der_decode(ExpType, DER),
+            %% So this isn't the end of it - the privateKey component of
+            %% 'PrivateKeyInfo' is just an OCTET-STRING that needs to be
+            %% further decoded as an ECPrivateKey.
+            PrivKeyOctets = PKI#'PrivateKeyInfo'.privateKey,
+            %% -record('ECPrivateKey', {version, privateKey, parameters,
+            %%                          publicKey}).
+            {ok, ECPK} = 'OTP-PUB-KEY':decode('ECPrivateKey', PrivKeyOctets),
+            ECPK;
+        [{UnexpType, _, _}] ->
+            throw({unexpected_signing_key_type, UnexpType})
+    end.
 
 %%--------------------------------------------------------------------
 %% @doc Generate a private key. This is mostly useful for testing.
@@ -527,8 +533,9 @@ make_internal(KID, Issuer, <<SigningKeyPem/binary>>) ->
 %% @end
 %%--------------------------------------------------------------------
 -compile({inline, [bsignature/2]}).
-bsignature(SigningInput, #'ECPrivateKey'{}=Key) when is_binary(SigningInput) ->
-    Sig = public_key:sign(SigningInput, ?DIGEST_TYPE, Key),
+bsignature(SigningInput, #'ECPrivateKey'{}=PK) when is_binary(SigningInput) ->
+    Key = [PK#'ECPrivateKey'.privateKey, ?CURVE],
+    Sig = crypto:sign(?ALGORITHM, ?DIGEST_TYPE, SigningInput, Key),
     maybe_der_decode_sig(Sig).
 
 %%--------------------------------------------------------------------
@@ -671,4 +678,5 @@ maybe_der_decode_sig(<<Sig/binary>>) ->
         _:_ ->
             Sig
     end.
+
 
