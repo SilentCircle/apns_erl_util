@@ -92,7 +92,7 @@ iat() = <a href="#type-posix_time">posix_time()</a>
 
 
 <pre><code>
-input_context() = <a href="#type-output_context">output_context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a>
+input_context() = <a href="#type-context">context()</a> | <a href="#type-apns_jwt_ctx">apns_jwt_ctx()</a>
 </code></pre>
 
 
@@ -173,16 +173,6 @@ jwt() = <a href="#type-bstring">bstring()</a>
 
 <pre><code>
 kid() = <a href="#type-bstring">bstring()</a>
-</code></pre>
-
-
-
-
-### <a name="type-output_context">output_context()</a> ###
-
-
-<pre><code>
-output_context() = binary()
 </code></pre>
 
 

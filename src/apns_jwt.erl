@@ -107,8 +107,8 @@
 
 -type apns_jwt_ctx() :: #apns_jwt_ctx{}.
 -type output_context() :: binary().
--type input_context() :: output_context() | apns_jwt_ctx().
 -opaque context() :: output_context().
+-type input_context() :: context() | apns_jwt_ctx().
 
 %%%====================================================================
 %%% API
